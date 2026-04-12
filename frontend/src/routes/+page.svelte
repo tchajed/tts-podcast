@@ -95,6 +95,7 @@
 						<select bind:value={newTts}>
 							<option value="openai">OpenAI</option>
 							<option value="elevenlabs">ElevenLabs</option>
+							<option value="google">Google</option>
 						</select>
 					</div>
 					<button type="submit" class="primary">Create Feed</button>

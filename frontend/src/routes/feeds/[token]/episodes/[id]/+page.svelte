@@ -61,10 +61,22 @@
 			<span class={badgeClass(episode.status)}>{episode.status}</span>
 		</div>
 
+		{#if episode.image_url}
+			<div class="mb-2">
+				<img src={episode.image_url} alt="Episode cover" style="max-width: 200px; border-radius: 8px;" />
+			</div>
+		{/if}
+
 		<table style="width: 100%; font-size: 0.875rem;"><tbody>
 			<tr>
 				<td class="muted" style="padding: 0.25rem 1rem 0.25rem 0; white-space: nowrap;">Source</td>
-				<td><a href={episode.source_url} target="_blank" rel="noopener">{episode.source_url}</a></td>
+				<td>
+					{#if episode.source_url}
+						<a href={episode.source_url} target="_blank" rel="noopener">{episode.source_url}</a>
+					{:else}
+						PDF upload
+					{/if}
+				</td>
 			</tr>
 			<tr>
 				<td class="muted" style="padding: 0.25rem 1rem 0.25rem 0;">Type</td>

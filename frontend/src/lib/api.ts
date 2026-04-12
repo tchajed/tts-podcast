@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
 export interface Feed {
 	id: string;
@@ -25,10 +25,11 @@ export interface FeedWithEpisodes {
 export interface Episode {
 	id: string;
 	title: string;
-	source_url: string;
+	source_url: string | null;
 	source_type: string;
 	status: string;
 	audio_url: string | null;
+	image_url: string | null;
 	duration_secs: number | null;
 	tts_provider: string | null;
 	error_msg: string | null;
@@ -39,17 +40,22 @@ export interface Episode {
 export interface SubmitEpisodeResponse {
 	id: string;
 	status: string;
-	source_url: string;
+	source_url: string | null;
 	source_type: string;
 }
 
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+	const headers: Record<string, string> = {
+		...((options.headers as Record<string, string>) || {}),
+	};
+	// Don't set Content-Type for FormData (browser sets boundary automatically)
+	if (!(options.body instanceof FormData)) {
+		headers['Content-Type'] = 'application/json';
+	}
+
 	const resp = await fetch(`${API_BASE}${path}`, {
 		...options,
-		headers: {
-			'Content-Type': 'application/json',
-			...options.headers,
-		},
+		headers,
 	});
 	if (!resp.ok) {
 		const body = await resp.text();
@@ -101,6 +107,23 @@ export async function submitEpisode(
 	});
 }
 
+export async function uploadPdf(
+	feedToken: string,
+	file: File,
+	title?: string,
+	ttsProvider?: string
+): Promise<SubmitEpisodeResponse> {
+	const formData = new FormData();
+	formData.append('file', file);
+	if (title) formData.append('title', title);
+	if (ttsProvider) formData.append('tts_provider', ttsProvider);
+
+	return apiFetch(`/api/v1/feeds/${feedToken}/episodes/pdf`, {
+		method: 'POST',
+		body: formData,
+	});
+}
+
 export async function getEpisode(feedToken: string, episodeId: string): Promise<Episode> {
 	return apiFetch(`/api/v1/feeds/${feedToken}/episodes/${episodeId}`);
 }
@@ -122,17 +145,4 @@ export function formatDuration(secs: number | null): string {
 	const m = Math.floor(secs / 60);
 	const s = secs % 60;
 	return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-export function statusColor(status: string): string {
-	switch (status) {
-		case 'done':
-			return '#22c55e';
-		case 'error':
-			return '#ef4444';
-		case 'pending':
-			return '#9ca3af';
-		default:
-			return '#eab308'; // in-progress stages
-	}
 }

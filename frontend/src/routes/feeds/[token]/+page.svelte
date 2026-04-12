@@ -4,6 +4,7 @@
 	import {
 		getFeed,
 		submitEpisode,
+		uploadPdf,
 		formatDuration,
 		type FeedWithEpisodes,
 		type Episode,
@@ -15,24 +16,27 @@
 	let submitTts = $state('');
 	let submitting = $state(false);
 
+	// PDF upload
+	let pdfFile = $state<File | null>(null);
+	let pdfTitle = $state('');
+	let pdfTts = $state('');
+	let uploadingPdf = $state(false);
+
 	let token = $derived($page.params.token ?? '');
 	let pollInterval: ReturnType<typeof setInterval> | null = null;
 
 	async function loadFeed() {
 		try {
 			feed = await getFeed(token);
-			if (!submitTts && feed) {
-				submitTts = feed.tts_default;
-			}
+			if (!submitTts && feed) submitTts = feed.tts_default;
+			if (!pdfTts && feed) pdfTts = feed.tts_default;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load feed';
 		}
 	}
 
 	function hasInProgress(episodes: Episode[]): boolean {
-		return episodes.some(
-			(ep) => !['done', 'error'].includes(ep.status)
-		);
+		return episodes.some((ep) => !['done', 'error'].includes(ep.status));
 	}
 
 	function startPolling() {
@@ -56,11 +60,9 @@
 		startPolling();
 	});
 
-	onDestroy(() => {
-		stopPolling();
-	});
+	onDestroy(() => stopPolling());
 
-	async function handleSubmit() {
+	async function handleSubmitUrl() {
 		if (!submitUrl.trim()) return;
 		submitting = true;
 		error = '';
@@ -76,6 +78,23 @@
 		}
 	}
 
+	async function handleUploadPdf() {
+		if (!pdfFile) return;
+		uploadingPdf = true;
+		error = '';
+		try {
+			await uploadPdf(token, pdfFile, pdfTitle || undefined, pdfTts || undefined);
+			pdfFile = null;
+			pdfTitle = '';
+			await loadFeed();
+			startPolling();
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to upload PDF';
+		} finally {
+			uploadingPdf = false;
+		}
+	}
+
 	function copyToClipboard(text: string) {
 		navigator.clipboard.writeText(text);
 	}
@@ -85,6 +104,11 @@
 		if (status === 'error') return 'badge error';
 		if (status === 'pending') return 'badge pending';
 		return 'badge processing';
+	}
+
+	function handleFileInput(e: Event) {
+		const target = e.target as HTMLInputElement;
+		pdfFile = target.files?.[0] ?? null;
 	}
 </script>
 
@@ -99,8 +123,9 @@
 		</button>
 	</div>
 
+	<!-- URL submission -->
 	<div class="card mb-2">
-		<form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
+		<form onsubmit={(e) => { e.preventDefault(); handleSubmitUrl(); }}>
 			<label class="mb-1" style="display:block; font-weight:500;">Submit URL</label>
 			<div class="flex">
 				<input
@@ -111,9 +136,31 @@
 				<select bind:value={submitTts} style="width: auto;">
 					<option value="openai">OpenAI</option>
 					<option value="elevenlabs">ElevenLabs</option>
+					<option value="google">Google</option>
 				</select>
 				<button type="submit" class="primary" disabled={submitting}>
 					{submitting ? 'Submitting...' : 'Submit'}
+				</button>
+			</div>
+		</form>
+	</div>
+
+	<!-- PDF upload -->
+	<div class="card mb-2">
+		<form onsubmit={(e) => { e.preventDefault(); handleUploadPdf(); }}>
+			<label class="mb-1" style="display:block; font-weight:500;">Upload PDF</label>
+			<div class="flex mb-1">
+				<input type="file" accept=".pdf" onchange={handleFileInput} disabled={uploadingPdf} />
+				<select bind:value={pdfTts} style="width: auto;">
+					<option value="openai">OpenAI</option>
+					<option value="elevenlabs">ElevenLabs</option>
+					<option value="google">Google</option>
+				</select>
+			</div>
+			<div class="flex">
+				<input bind:value={pdfTitle} placeholder="Title (optional)" disabled={uploadingPdf} />
+				<button type="submit" class="primary" disabled={uploadingPdf || !pdfFile}>
+					{uploadingPdf ? 'Uploading...' : 'Upload'}
 				</button>
 			</div>
 		</form>
@@ -128,13 +175,22 @@
 	{#each feed.episodes as ep}
 		<div class="card">
 			<div class="flex-between mb-1">
-				<a href="/feeds/{token}/episodes/{ep.id}">
-					<strong>{ep.title}</strong>
-				</a>
+				<div class="flex">
+					{#if ep.image_url}
+						<img src={ep.image_url} alt="" style="width:40px; height:40px; border-radius:4px; object-fit:cover;" />
+					{/if}
+					<a href="/feeds/{token}/episodes/{ep.id}">
+						<strong>{ep.title}</strong>
+					</a>
+				</div>
 				<span class={badgeClass(ep.status)}>{ep.status}</span>
 			</div>
 			<div class="muted" style="font-size: 0.8rem;">
-				<a href={ep.source_url} target="_blank" rel="noopener">{ep.source_url}</a>
+				{#if ep.source_url}
+					<a href={ep.source_url} target="_blank" rel="noopener">{ep.source_url}</a>
+				{:else}
+					PDF upload
+				{/if}
 			</div>
 			{#if ep.status === 'error' && ep.error_msg}
 				<div style="color: var(--danger); font-size: 0.85rem; margin-top: 0.5rem;">
@@ -149,7 +205,7 @@
 			{/if}
 		</div>
 	{:else}
-		<p class="muted">No episodes yet. Submit a URL above to create one.</p>
+		<p class="muted">No episodes yet. Submit a URL or upload a PDF above.</p>
 	{/each}
 {:else if error}
 	<div class="card" style="border-color: var(--danger); color: var(--danger);">{error}</div>
