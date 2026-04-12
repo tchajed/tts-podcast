@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::config::AppConfig;
 
@@ -10,18 +9,18 @@ Transform the provided text so it reads naturally when spoken aloud.
 Rules:
 - Remove any remaining navigation text, share buttons, author bios,
   newsletter signup prompts, or other non-article content.
-- Fix encoding artifacts (curly quotes, em-dashes are fine; fix broken UTF-8).
+- Fix encoding artifacts. Curly quotes and em-dashes are fine.
 - Keep the article's natural structure and flow.
 - Do not summarize or omit any article content.
 - Do not add commentary.
 - Output only the cleaned article text, nothing else."#;
 
-const ARXIV_SYSTEM_PROMPT: &str = r#"You are preparing an academic paper for text-to-speech conversion.
+const ACADEMIC_SYSTEM_PROMPT: &str = r#"You are preparing an academic paper for text-to-speech conversion.
 Transform the provided text so it reads naturally when spoken aloud.
 
 Rules:
 - Remove all citation markers: [1], [23], (Smith et al., 2019), etc.
-- Remove figure and table references: "as shown in Figure 3", "see Table 1" → omit entirely.
+- Remove figure and table references: "as shown in Figure 3" → omit entirely.
 - Rewrite inline equations as spoken English:
     \frac{a}{b} → "a over b"
     x^2 → "x squared"
@@ -29,9 +28,9 @@ Rules:
     For complex equations, describe what they compute rather than reading symbol-by-symbol.
 - Expand abbreviations on first use if the expansion aids comprehension.
 - Replace "in the next section" / "as mentioned above" with brief inline context.
-- Remove any LaTeX artifacts, section numbering (e.g. "3.2 Method"), footnote markers.
+- Remove LaTeX artifacts, section numbering (e.g. "3.2 Method"), footnote markers.
 - Keep all substantive content — do not summarize or omit findings, methods, or discussion.
-- Output only the cleaned paper text, nothing else."#;
+- Output only the cleaned text, nothing else."#;
 
 #[derive(Serialize)]
 struct ClaudeRequest {
@@ -59,8 +58,8 @@ struct ClaudeContent {
 }
 
 pub async fn run(
-    episode_id: Uuid,
-    pool: &sqlx::PgPool,
+    episode_id: &str,
+    pool: &sqlx::SqlitePool,
     config: &AppConfig,
 ) -> Result<()> {
     let (raw_text, source_type) = sqlx::query_as::<_, (Option<String>, String)>(
@@ -73,13 +72,13 @@ pub async fn run(
     let raw_text = raw_text.context("No raw_text available for cleaning")?;
 
     let system_prompt = match source_type.as_str() {
-        "arxiv" => ARXIV_SYSTEM_PROMPT,
+        "arxiv" | "pdf" => ACADEMIC_SYSTEM_PROMPT,
         _ => ARTICLE_SYSTEM_PROMPT,
     };
 
-    // Use sonnet for articles (cheaper), opus for arxiv (better quality)
+    // Sonnet for articles, Opus for academic content
     let model = match source_type.as_str() {
-        "arxiv" => "claude-sonnet-4-6-20250514",
+        "arxiv" | "pdf" => "claude-opus-4-6-20250514",
         _ => "claude-sonnet-4-6-20250514",
     };
 

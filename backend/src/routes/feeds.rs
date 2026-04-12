@@ -6,7 +6,6 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
@@ -37,36 +36,36 @@ fn default_tts() -> String {
 
 #[derive(Debug, Serialize, FromRow)]
 pub struct FeedRow {
-    pub id: Uuid,
+    pub id: String,
     pub slug: String,
     pub title: String,
     pub description: String,
-    pub feed_token: Uuid,
+    pub feed_token: String,
     pub tts_default: String,
-    pub created_at: OffsetDateTime,
+    pub created_at: String,
 }
 
 #[derive(Debug, Serialize)]
 pub struct FeedResponse {
-    pub id: Uuid,
+    pub id: String,
     pub slug: String,
     pub title: String,
     pub description: String,
-    pub feed_token: Uuid,
+    pub feed_token: String,
     pub tts_default: String,
     pub rss_url: String,
-    pub created_at: OffsetDateTime,
+    pub created_at: String,
 }
 
 #[derive(Debug, Serialize, FromRow)]
 pub struct FeedListItem {
-    pub id: Uuid,
+    pub id: String,
     pub slug: String,
     pub title: String,
     pub description: String,
     pub tts_default: String,
-    pub created_at: OffsetDateTime,
-    pub episode_count: i64,
+    pub created_at: String,
+    pub episode_count: i32,
 }
 
 fn require_admin(headers: &HeaderMap, admin_token: &str) -> AppResult<()> {
@@ -89,25 +88,34 @@ async fn create_feed(
 ) -> AppResult<(StatusCode, Json<FeedResponse>)> {
     require_admin(&headers, &state.config.admin_token)?;
 
-    if !matches!(req.tts_default.as_str(), "openai" | "elevenlabs") {
+    if !matches!(req.tts_default.as_str(), "openai" | "elevenlabs" | "google") {
         return Err(AppError::BadRequest(
-            "tts_default must be 'openai' or 'elevenlabs'".into(),
+            "tts_default must be 'openai', 'elevenlabs', or 'google'".into(),
         ));
     }
 
-    let row = sqlx::query_as::<_, FeedRow>(
-        "INSERT INTO feeds (slug, title, description, tts_default)
-         VALUES ($1, $2, $3, $4)
-         RETURNING *",
+    let id = Uuid::new_v4().to_string();
+    let feed_token = Uuid::new_v4().to_string();
+
+    sqlx::query(
+        "INSERT INTO feeds (id, slug, title, description, feed_token, tts_default)
+         VALUES ($1, $2, $3, $4, $5, $6)",
     )
+    .bind(&id)
     .bind(&req.slug)
     .bind(&req.title)
     .bind(&req.description)
+    .bind(&feed_token)
     .bind(&req.tts_default)
-    .fetch_one(&state.pool)
+    .execute(&state.pool)
     .await?;
 
-    let rss_url = format!("{}/feed/{}/rss.xml", state.config.public_url, row.feed_token);
+    let rss_url = format!("{}/feed/{}/rss.xml", state.config.public_url, feed_token);
+
+    let row = sqlx::query_as::<_, FeedRow>("SELECT * FROM feeds WHERE id = $1")
+        .bind(&id)
+        .fetch_one(&state.pool)
+        .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -132,7 +140,7 @@ async fn list_feeds(
 
     let feeds = sqlx::query_as::<_, FeedListItem>(
         "SELECT f.id, f.slug, f.title, f.description, f.tts_default, f.created_at,
-                COUNT(e.id) as episode_count
+                CAST(COUNT(e.id) AS INTEGER) as episode_count
          FROM feeds f
          LEFT JOIN episodes e ON e.feed_id = f.id
          GROUP BY f.id
@@ -146,7 +154,7 @@ async fn list_feeds(
 
 #[derive(Debug, Serialize)]
 pub struct FeedWithEpisodes {
-    pub id: Uuid,
+    pub id: String,
     pub slug: String,
     pub title: String,
     pub description: String,
@@ -157,41 +165,45 @@ pub struct FeedWithEpisodes {
 
 #[derive(Debug, Serialize, FromRow)]
 pub struct EpisodeSummary {
-    pub id: Uuid,
+    pub id: String,
     pub title: String,
-    pub source_url: String,
+    pub source_url: Option<String>,
     pub source_type: String,
     pub status: String,
     pub audio_url: Option<String>,
+    pub image_url: Option<String>,
     pub duration_secs: Option<i32>,
     pub tts_provider: Option<String>,
     pub error_msg: Option<String>,
-    pub pub_date: Option<OffsetDateTime>,
-    pub created_at: OffsetDateTime,
+    pub pub_date: Option<String>,
+    pub created_at: String,
 }
 
 async fn get_feed(
     State(state): State<AppState>,
-    Path(feed_token): Path<Uuid>,
+    Path(feed_token): Path<String>,
 ) -> AppResult<Json<FeedWithEpisodes>> {
     let feed = sqlx::query_as::<_, FeedRow>("SELECT * FROM feeds WHERE feed_token = $1")
-        .bind(feed_token)
+        .bind(&feed_token)
         .fetch_optional(&state.pool)
         .await?
         .ok_or(AppError::NotFound)?;
 
     let episodes = sqlx::query_as::<_, EpisodeSummary>(
-        "SELECT id, title, source_url, source_type, status, audio_url,
+        "SELECT id, title, source_url, source_type, status, audio_url, image_url,
                 duration_secs, tts_provider, error_msg, pub_date, created_at
          FROM episodes WHERE feed_id = $1
          ORDER BY created_at DESC
          LIMIT 100",
     )
-    .bind(feed.id)
+    .bind(&feed.id)
     .fetch_all(&state.pool)
     .await?;
 
-    let rss_url = format!("{}/feed/{}/rss.xml", state.config.public_url, feed.feed_token);
+    let rss_url = format!(
+        "{}/feed/{}/rss.xml",
+        state.config.public_url, feed.feed_token
+    );
 
     Ok(Json(FeedWithEpisodes {
         id: feed.id,
@@ -207,12 +219,12 @@ async fn get_feed(
 async fn delete_feed(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path(feed_token): Path<Uuid>,
+    Path(feed_token): Path<String>,
 ) -> AppResult<StatusCode> {
     require_admin(&headers, &state.config.admin_token)?;
 
     let result = sqlx::query("DELETE FROM feeds WHERE feed_token = $1")
-        .bind(feed_token)
+        .bind(&feed_token)
         .execute(&state.pool)
         .await?;
 

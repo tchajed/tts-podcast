@@ -1,13 +1,13 @@
 use anyhow::{Context, Result};
+use base64::Engine;
 use bytes::Bytes;
-use uuid::Uuid;
 
 use crate::config::AppConfig;
 use crate::pipeline::storage::StorageClient;
 
 pub async fn run(
-    episode_id: Uuid,
-    pool: &sqlx::PgPool,
+    episode_id: &str,
+    pool: &sqlx::SqlitePool,
     config: &AppConfig,
     storage: &StorageClient,
 ) -> Result<()> {
@@ -29,6 +29,7 @@ pub async fn run(
     for chunk in &chunks {
         let audio = match provider.as_str() {
             "elevenlabs" => tts_elevenlabs(&client, config, chunk).await?,
+            "google" => tts_google(&client, config, chunk).await?,
             _ => tts_openai(&client, config, chunk).await?,
         };
         audio_parts.push(audio);
@@ -38,21 +39,24 @@ pub async fn run(
     let total_bytes: Vec<u8> = audio_parts.iter().flat_map(|b| b.to_vec()).collect();
     let audio = Bytes::from(total_bytes);
 
-    // Estimate duration from word count
-    let word_count = cleaned_text.split_whitespace().count();
-    let duration_secs = (word_count as f64 / 150.0 * 60.0) as i32;
+    // Exact MP3 duration
+    let duration_secs = mp3_duration::from_read(&mut std::io::Cursor::new(&audio[..]))
+        .map(|d| d.as_secs() as i32)
+        .unwrap_or_else(|_| {
+            // Fallback: estimate from word count
+            let word_count = cleaned_text.split_whitespace().count();
+            (word_count as f64 / 150.0 * 60.0) as i32
+        });
 
     // Upload to storage
     let audio_url = storage.upload_episode_audio(episode_id, audio).await?;
 
-    sqlx::query(
-        "UPDATE episodes SET audio_url = $1, duration_secs = $2 WHERE id = $3",
-    )
-    .bind(&audio_url)
-    .bind(duration_secs)
-    .bind(episode_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE episodes SET audio_url = $1, duration_secs = $2 WHERE id = $3")
+        .bind(&audio_url)
+        .bind(duration_secs)
+        .bind(episode_id)
+        .execute(pool)
+        .await?;
 
     Ok(())
 }
@@ -84,7 +88,6 @@ fn split_sentences(text: &str) -> Vec<String> {
     for ch in text.chars() {
         current.push(ch);
         if (ch == '.' || ch == '!' || ch == '?') && current.len() > 1 {
-            // Peek: if next char would be a space or newline, this is a sentence boundary
             sentences.push(current.clone());
             current.clear();
         }
@@ -106,7 +109,7 @@ async fn tts_openai(client: &reqwest::Client, config: &AppConfig, text: &str) ->
         .bearer_auth(api_key)
         .json(&serde_json::json!({
             "model": "tts-1-hd",
-            "voice": config.openai_voice,
+            "voice": config.openai_tts_voice,
             "input": text,
             "response_format": "mp3",
         }))
@@ -146,4 +149,46 @@ async fn tts_elevenlabs(
         .context("ElevenLabs TTS request failed")?;
 
     Ok(resp.bytes().await?)
+}
+
+async fn tts_google(
+    client: &reqwest::Client,
+    config: &AppConfig,
+    text: &str,
+) -> Result<Bytes> {
+    let api_key = config
+        .google_api_key
+        .as_ref()
+        .context("GOOGLE_API_KEY not set")?;
+
+    let url = format!(
+        "https://texttospeech.googleapis.com/v1/text:synthesize?key={}",
+        api_key
+    );
+
+    let resp = client
+        .post(&url)
+        .json(&serde_json::json!({
+            "input": { "text": text },
+            "voice": {
+                "languageCode": "en-US",
+                "name": config.google_tts_voice,
+            },
+            "audioConfig": { "audioEncoding": "MP3" },
+        }))
+        .send()
+        .await?
+        .error_for_status()
+        .context("Google TTS request failed")?;
+
+    let body: serde_json::Value = resp.json().await?;
+    let audio_b64 = body["audioContent"]
+        .as_str()
+        .context("No audioContent in Google TTS response")?;
+
+    let audio_bytes = base64::engine::general_purpose::STANDARD
+        .decode(audio_b64)
+        .context("Failed to decode Google TTS audio")?;
+
+    Ok(Bytes::from(audio_bytes))
 }

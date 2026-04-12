@@ -9,25 +9,29 @@ pub struct AppConfig {
     pub aws_region: String,
     pub bucket_name: String,
     pub anthropic_api_key: String,
+    pub google_api_key: Option<String>,
     pub admin_token: String,
     pub openai_api_key: Option<String>,
     pub elevenlabs_api_key: Option<String>,
     pub elevenlabs_voice_id: String,
-    pub openai_voice: String,
+    pub openai_tts_voice: String,
+    pub google_tts_voice: String,
     pub host: String,
     pub port: u16,
     pub worker_poll_interval: u64,
     pub max_job_attempts: i32,
     pub public_url: String,
+    pub generate_images: bool,
 }
 
 impl AppConfig {
     pub fn from_env() -> Self {
         let openai_api_key = env::var("OPENAI_API_KEY").ok();
         let elevenlabs_api_key = env::var("ELEVENLABS_API_KEY").ok();
+        let google_api_key = env::var("GOOGLE_API_KEY").ok();
 
-        if openai_api_key.is_none() && elevenlabs_api_key.is_none() {
-            panic!("At least one of OPENAI_API_KEY or ELEVENLABS_API_KEY must be set");
+        if openai_api_key.is_none() && elevenlabs_api_key.is_none() && google_api_key.is_none() {
+            panic!("At least one TTS provider key must be set (OPENAI_API_KEY, ELEVENLABS_API_KEY, or GOOGLE_API_KEY)");
         }
 
         let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into());
@@ -36,8 +40,8 @@ impl AppConfig {
             .parse()
             .expect("PORT must be a valid u16");
 
-        let public_url = env::var("PUBLIC_URL")
-            .unwrap_or_else(|_| format!("http://{}:{}", host, port));
+        let public_url =
+            env::var("PUBLIC_URL").unwrap_or_else(|_| format!("http://{}:{}", host, port));
 
         Self {
             database_url: required("DATABASE_URL"),
@@ -47,13 +51,16 @@ impl AppConfig {
             aws_region: env::var("AWS_REGION").unwrap_or_else(|_| "auto".into()),
             bucket_name: required("BUCKET_NAME"),
             anthropic_api_key: required("ANTHROPIC_API_KEY"),
+            google_api_key,
             admin_token: required("ADMIN_TOKEN"),
             openai_api_key,
             elevenlabs_api_key,
             elevenlabs_voice_id: env::var("ELEVENLABS_VOICE_ID")
                 .unwrap_or_else(|_| "Rachel".into()),
-            openai_voice: env::var("OPENAI_VOICE")
+            openai_tts_voice: env::var("OPENAI_TTS_VOICE")
                 .unwrap_or_else(|_| "onyx".into()),
+            google_tts_voice: env::var("GOOGLE_TTS_VOICE")
+                .unwrap_or_else(|_| "en-US-Journey-D".into()),
             host,
             port,
             worker_poll_interval: env::var("WORKER_POLL_INTERVAL_SECS")
@@ -65,6 +72,9 @@ impl AppConfig {
                 .parse()
                 .expect("MAX_JOB_ATTEMPTS must be a valid i32"),
             public_url,
+            generate_images: env::var("GENERATE_IMAGES")
+                .map(|v| v != "false" && v != "0")
+                .unwrap_or(true),
         }
     }
 }

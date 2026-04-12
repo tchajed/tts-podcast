@@ -6,9 +6,6 @@ use axum::{
     Router,
 };
 use sqlx::FromRow;
-use time::format_description::well_known::Rfc2822;
-use time::OffsetDateTime;
-use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
 use crate::AppState;
@@ -19,42 +16,43 @@ pub fn router() -> Router<AppState> {
 
 #[derive(FromRow)]
 struct FeedInfo {
-    id: Uuid,
+    id: String,
     title: String,
     description: String,
-    feed_token: Uuid,
+    feed_token: String,
 }
 
 #[derive(FromRow)]
 struct RssEpisode {
-    id: Uuid,
+    id: String,
     title: String,
-    source_url: String,
+    source_url: Option<String>,
     audio_url: Option<String>,
+    image_url: Option<String>,
     duration_secs: Option<i32>,
-    pub_date: Option<OffsetDateTime>,
+    pub_date: Option<String>,
 }
 
 async fn rss_feed(
     State(state): State<AppState>,
-    Path(feed_token): Path<Uuid>,
+    Path(feed_token): Path<String>,
 ) -> AppResult<impl IntoResponse> {
     let feed = sqlx::query_as::<_, FeedInfo>(
         "SELECT id, title, description, feed_token FROM feeds WHERE feed_token = $1",
     )
-    .bind(feed_token)
+    .bind(&feed_token)
     .fetch_optional(&state.pool)
     .await?
     .ok_or(AppError::NotFound)?;
 
     let episodes = sqlx::query_as::<_, RssEpisode>(
-        "SELECT id, title, source_url, audio_url, duration_secs, pub_date
+        "SELECT id, title, source_url, audio_url, image_url, duration_secs, pub_date
          FROM episodes
          WHERE feed_id = $1 AND status = 'done' AND audio_url IS NOT NULL
          ORDER BY pub_date DESC
          LIMIT 50",
     )
-    .bind(feed.id)
+    .bind(&feed.id)
     .fetch_all(&state.pool)
     .await?;
 
@@ -65,30 +63,40 @@ async fn rss_feed(
 
     let mut items = String::new();
     for ep in &episodes {
-        let pub_date = ep
-            .pub_date
-            .map(|d| d.format(&Rfc2822).unwrap_or_default())
-            .unwrap_or_default();
-
+        let pub_date = ep.pub_date.as_deref().unwrap_or("");
         let duration = ep.duration_secs.unwrap_or(0);
         let audio_url = ep.audio_url.as_deref().unwrap_or("");
+        let description = ep
+            .source_url
+            .as_deref()
+            .unwrap_or("PDF upload");
+
+        let image_tag = if let Some(ref img_url) = ep.image_url {
+            format!(
+                "\n      <itunes:image href=\"{}\"/>",
+                xml_escape(img_url)
+            )
+        } else {
+            String::new()
+        };
 
         items.push_str(&format!(
             r#"    <item>
       <title>{title}</title>
       <guid isPermaLink="false">{id}</guid>
       <pubDate>{pub_date}</pubDate>
-      <description>{source_url}</description>
+      <description>{description}</description>
       <enclosure url="{audio_url}" length="0" type="audio/mpeg"/>
-      <itunes:duration>{duration}</itunes:duration>
+      <itunes:duration>{duration}</itunes:duration>{image_tag}
     </item>
 "#,
             title = xml_escape(&ep.title),
             id = ep.id,
             pub_date = pub_date,
-            source_url = xml_escape(&ep.source_url),
+            description = xml_escape(description),
             audio_url = xml_escape(audio_url),
             duration = duration,
+            image_tag = image_tag,
         ));
     }
 

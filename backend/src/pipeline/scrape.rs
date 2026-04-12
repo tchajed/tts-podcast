@@ -1,21 +1,22 @@
 use anyhow::{Context, Result};
 use reqwest::Client;
 use url::Url;
-use uuid::Uuid;
 
 use crate::config::AppConfig;
 
 pub async fn run(
-    episode_id: Uuid,
-    pool: &sqlx::PgPool,
+    episode_id: &str,
+    pool: &sqlx::SqlitePool,
     _config: &AppConfig,
 ) -> Result<()> {
-    let (source_url, source_type) = sqlx::query_as::<_, (String, String)>(
+    let (source_url, source_type) = sqlx::query_as::<_, (Option<String>, String)>(
         "SELECT source_url, source_type FROM episodes WHERE id = $1",
     )
     .bind(episode_id)
     .fetch_one(pool)
     .await?;
+
+    let source_url = source_url.context("No source_url for scrape stage")?;
 
     let client = Client::builder()
         .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -59,8 +60,8 @@ async fn scrape_article(client: &Client, url: &str) -> Result<(String, String)> 
 }
 
 async fn scrape_arxiv(client: &Client, url: &str) -> Result<(String, String)> {
-    let arxiv_id = extract_arxiv_id(url)
-        .context("Could not extract arXiv ID from URL")?;
+    let arxiv_id =
+        extract_arxiv_id(url).context("Could not extract arXiv ID from URL")?;
 
     // Fetch metadata from arXiv API
     let api_url = format!("https://export.arxiv.org/api/query?id_list={arxiv_id}");
@@ -84,7 +85,10 @@ fn extract_arxiv_id(url: &str) -> Option<String> {
     for pat in patterns {
         if let Some(idx) = url.find(pat) {
             let rest = &url[idx + pat.len()..];
-            let id: String = rest.chars().take_while(|c| *c != '/' && *c != '?').collect();
+            let id: String = rest
+                .chars()
+                .take_while(|c| *c != '/' && *c != '?')
+                .collect();
             if !id.is_empty() {
                 return Some(id);
             }
@@ -94,7 +98,6 @@ fn extract_arxiv_id(url: &str) -> Option<String> {
 }
 
 fn parse_arxiv_title(xml: &str) -> Option<String> {
-    // Simple extraction — find <title> inside <entry>
     let entry_start = xml.find("<entry>")?;
     let after_entry = &xml[entry_start..];
     let title_start = after_entry.find("<title>")? + 7;

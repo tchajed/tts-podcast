@@ -6,7 +6,7 @@ mod routes;
 mod worker;
 
 use axum::Router;
-use sqlx::PgPool;
+use sqlx::SqlitePool;
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
@@ -16,7 +16,7 @@ use crate::pipeline::storage::StorageClient;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub pool: PgPool,
+    pub pool: SqlitePool,
     pub config: AppConfig,
     pub storage: StorageClient,
 }
@@ -31,7 +31,11 @@ async fn main() {
         .init();
 
     let config = AppConfig::from_env();
-    tracing::info!("Starting TTS Podcast backend on {}:{}", config.host, config.port);
+    tracing::info!(
+        "Starting TTS Podcast backend on {}:{}",
+        config.host,
+        config.port
+    );
 
     let pool = db::create_pool(&config.database_url).await;
     db::run_migrations(&pool).await;
@@ -45,7 +49,7 @@ async fn main() {
         storage: storage.clone(),
     };
 
-    // Start background worker
+    // Start background worker (runs inline, one job at a time)
     tokio::spawn(worker::run_worker(pool, config.clone(), storage));
     tracing::info!("Background worker started");
 

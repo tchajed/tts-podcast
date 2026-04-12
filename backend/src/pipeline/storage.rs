@@ -1,9 +1,8 @@
 use anyhow::Result;
-use aws_sdk_s3::Client;
 use aws_sdk_s3::primitives::ByteStream;
+use aws_sdk_s3::Client;
 use bytes::Bytes;
 use sha2::{Digest, Sha256};
-use uuid::Uuid;
 
 use crate::config::AppConfig;
 
@@ -40,7 +39,7 @@ impl StorageClient {
 
     pub async fn upload_episode_audio(
         &self,
-        episode_id: Uuid,
+        episode_id: &str,
         audio_bytes: Bytes,
     ) -> Result<String> {
         let hash = hex::encode(&Sha256::digest(&audio_bytes)[..8]);
@@ -52,6 +51,29 @@ impl StorageClient {
             .key(&key)
             .body(ByteStream::from(audio_bytes))
             .content_type("audio/mpeg")
+            .cache_control("public, max-age=31536000, immutable")
+            .send()
+            .await?;
+
+        Ok(format!(
+            "https://{}.fly.storage.tigris.dev/{}",
+            self.bucket, key
+        ))
+    }
+
+    pub async fn upload_episode_image(
+        &self,
+        episode_id: &str,
+        image_bytes: Bytes,
+    ) -> Result<String> {
+        let key = format!("episodes/{}/cover.jpg", episode_id);
+
+        self.client
+            .put_object()
+            .bucket(&self.bucket)
+            .key(&key)
+            .body(ByteStream::from(image_bytes))
+            .content_type("image/jpeg")
             .cache_control("public, max-age=31536000, immutable")
             .send()
             .await?;

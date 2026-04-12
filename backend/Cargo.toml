@@ -1,20 +1,20 @@
 [package]
 name = "tts-podcast-backend"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
 # Web framework
-axum = { version = "0.8", features = ["macros"] }
+axum = { version = "0.8", features = ["macros", "multipart"] }
 tokio = { version = "1", features = ["full"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 
-# Database
-sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "uuid", "time", "migrate"] }
+# Database (SQLite)
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio-rustls", "migrate"] }
 
 # HTTP client
-reqwest = { version = "0.12", features = ["rustls-tls", "json"], default-features = false }
+reqwest = { version = "0.12", features = ["rustls-tls", "json", "multipart"], default-features = false }
 
 # S3 / Tigris
 aws-config = { version = "1", features = ["behavior-version-latest"] }
@@ -57,3 +57,9 @@ aws-smithy-types = "1"
 
 # URL parsing (used by readability)
 url = "2"
+
+# MP3 duration
+mp3-duration = "0.1"
+
+# Base64 (for Google TTS response decoding and Gemini image)
+base64 = "0.22"
