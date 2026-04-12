@@ -1,0 +1,16 @@
+pub mod episodes;
+pub mod feeds;
+pub mod rss;
+
+use axum::Router;
+use crate::AppState;
+
+pub fn api_router() -> Router<AppState> {
+    Router::new()
+        .merge(feeds::router())
+        .merge(episodes::router())
+}
+
+pub fn rss_router() -> Router<AppState> {
+    rss::router()
+}

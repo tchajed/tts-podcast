@@ -1,0 +1,6 @@
+/backend/target/
+/frontend/node_modules/
+/frontend/.svelte-kit/
+.env
+.env.*
+!.env.example

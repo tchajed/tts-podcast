@@ -1,0 +1,72 @@
+mod config;
+mod db;
+mod error;
+mod pipeline;
+mod routes;
+mod worker;
+
+use axum::Router;
+use sqlx::PgPool;
+use std::net::SocketAddr;
+use tower_http::cors::{Any, CorsLayer};
+use tower_http::trace::TraceLayer;
+
+use crate::config::AppConfig;
+use crate::pipeline::storage::StorageClient;
+
+#[derive(Clone)]
+pub struct AppState {
+    pub pool: PgPool,
+    pub config: AppConfig,
+    pub storage: StorageClient,
+}
+
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "info,tts_podcast_backend=debug".parse().unwrap()),
+        )
+        .init();
+
+    let config = AppConfig::from_env();
+    tracing::info!("Starting TTS Podcast backend on {}:{}", config.host, config.port);
+
+    let pool = db::create_pool(&config.database_url).await;
+    db::run_migrations(&pool).await;
+    tracing::info!("Database connected and migrations applied");
+
+    let storage = StorageClient::new(&config).await;
+
+    let state = AppState {
+        pool: pool.clone(),
+        config: config.clone(),
+        storage: storage.clone(),
+    };
+
+    // Start background worker
+    tokio::spawn(worker::run_worker(pool, config.clone(), storage));
+    tracing::info!("Background worker started");
+
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
+    let app = Router::new()
+        .merge(routes::rss_router())
+        .nest("", routes::api_router())
+        .with_state(state)
+        .layer(cors)
+        .layer(TraceLayer::new_for_http());
+
+    let addr: SocketAddr = format!("{}:{}", config.host, config.port)
+        .parse()
+        .expect("Invalid address");
+
+    tracing::info!("Listening on {addr}");
+
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
+}

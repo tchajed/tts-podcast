@@ -1,0 +1,59 @@
+[package]
+name = "tts-podcast-backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Web framework
+axum = { version = "0.8", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+# Database
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "uuid", "time", "migrate"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["rustls-tls", "json"], default-features = false }
+
+# S3 / Tigris
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-sdk-s3 = "1"
+aws-credential-types = "1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# IDs
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Time
+time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Crypto (for content-addressed storage keys)
+sha2 = "0.10"
+hex = "0.4"
+
+# HTML extraction
+readability = "0.3"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# XML parsing (for arXiv API)
+quick-xml = { version = "0.37", features = ["serialize"] }
+
+# Bytes
+bytes = "1"
+
+# AWS byte stream
+aws-smithy-types = "1"
+
+# URL parsing (used by readability)
+url = "2"
