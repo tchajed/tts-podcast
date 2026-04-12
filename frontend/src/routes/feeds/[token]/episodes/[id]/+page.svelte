@@ -1,0 +1,112 @@
+<script lang="ts">
+	import { page } from '$app/stores';
+	import { onMount, onDestroy } from 'svelte';
+	import { getEpisode, retryEpisode, formatDuration, type Episode } from '$lib/api';
+
+	let episode = $state<Episode | null>(null);
+	let error = $state('');
+	let retrying = $state(false);
+
+	let token = $derived($page.params.token ?? '');
+	let episodeId = $derived($page.params.id ?? '');
+	let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+	async function loadEpisode() {
+		try {
+			episode = await getEpisode(token, episodeId);
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to load episode';
+		}
+	}
+
+	onMount(async () => {
+		await loadEpisode();
+		pollInterval = setInterval(async () => {
+			if (episode && !['done', 'error'].includes(episode.status)) {
+				await loadEpisode();
+			}
+		}, 5000);
+	});
+
+	onDestroy(() => {
+		if (pollInterval) clearInterval(pollInterval);
+	});
+
+	async function handleRetry() {
+		retrying = true;
+		try {
+			await retryEpisode(token, episodeId);
+			await loadEpisode();
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to retry';
+		} finally {
+			retrying = false;
+		}
+	}
+
+	function badgeClass(status: string): string {
+		if (status === 'done') return 'badge done';
+		if (status === 'error') return 'badge error';
+		if (status === 'pending') return 'badge pending';
+		return 'badge processing';
+	}
+</script>
+
+<p class="mb-2"><a href="/feeds/{token}">&larr; Back to feed</a></p>
+
+{#if episode}
+	<div class="card">
+		<div class="flex-between mb-1">
+			<h2>{episode.title}</h2>
+			<span class={badgeClass(episode.status)}>{episode.status}</span>
+		</div>
+
+		<table style="width: 100%; font-size: 0.875rem;"><tbody>
+			<tr>
+				<td class="muted" style="padding: 0.25rem 1rem 0.25rem 0; white-space: nowrap;">Source</td>
+				<td><a href={episode.source_url} target="_blank" rel="noopener">{episode.source_url}</a></td>
+			</tr>
+			<tr>
+				<td class="muted" style="padding: 0.25rem 1rem 0.25rem 0;">Type</td>
+				<td>{episode.source_type}</td>
+			</tr>
+			<tr>
+				<td class="muted" style="padding: 0.25rem 1rem 0.25rem 0;">TTS Provider</td>
+				<td>{episode.tts_provider ?? '—'}</td>
+			</tr>
+			<tr>
+				<td class="muted" style="padding: 0.25rem 1rem 0.25rem 0;">Duration</td>
+				<td>{formatDuration(episode.duration_secs)}</td>
+			</tr>
+			<tr>
+				<td class="muted" style="padding: 0.25rem 1rem 0.25rem 0;">Published</td>
+				<td>{episode.pub_date ? new Date(episode.pub_date).toLocaleString() : '—'}</td>
+			</tr>
+			<tr>
+				<td class="muted" style="padding: 0.25rem 1rem 0.25rem 0;">Created</td>
+				<td>{new Date(episode.created_at).toLocaleString()}</td>
+			</tr>
+		</tbody></table>
+
+		{#if episode.status === 'error' && episode.error_msg}
+			<div class="mt-2" style="color: var(--danger); background: #fee2e2; padding: 0.75rem; border-radius: 6px;">
+				<strong>Error:</strong> {episode.error_msg}
+			</div>
+			<div class="mt-2">
+				<button class="primary" onclick={handleRetry} disabled={retrying}>
+					{retrying ? 'Retrying...' : 'Retry'}
+				</button>
+			</div>
+		{/if}
+
+		{#if episode.status === 'done' && episode.audio_url}
+			<div class="mt-2">
+				<audio controls src={episode.audio_url} style="width: 100%;" preload="none"></audio>
+			</div>
+		{/if}
+	</div>
+{:else if error}
+	<div class="card" style="border-color: var(--danger); color: var(--danger);">{error}</div>
+{:else}
+	<p class="muted">Loading...</p>
+{/if}
