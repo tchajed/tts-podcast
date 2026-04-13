@@ -168,7 +168,7 @@ async fn tts_google(
 ) -> Result<Bytes> {
     let url = format!(
         "https://texttospeech.googleapis.com/v1/text:synthesize?key={}",
-        config.google_api_key
+        config.google_tts_api_key
     );
 
     let resp = client

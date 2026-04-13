@@ -15,7 +15,8 @@ ENV_FILE="${ENV_FILE:-.env}"
 # Secrets to push to Fly (API keys + app config, not Tigris or local-only settings)
 SYNC_KEYS=(
     ANTHROPIC_API_KEY
-    GOOGLE_API_KEY
+    GOOGLE_TTS_API_KEY
+    GOOGLE_STUDIO_API_KEY
     ADMIN_TOKEN
     PUBLIC_URL
 )
@@ -30,7 +31,8 @@ ALL_KEYS=(
     AWS_REGION
     BUCKET_NAME
     ANTHROPIC_API_KEY
-    GOOGLE_API_KEY
+    GOOGLE_TTS_API_KEY
+    GOOGLE_STUDIO_API_KEY
     ADMIN_TOKEN
     PUBLIC_URL
 )

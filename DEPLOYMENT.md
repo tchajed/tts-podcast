@@ -12,11 +12,14 @@ Everything runs in a single Fly.io app. No Vercel, no separate frontend hosting.
 2. **Anthropic** — Claude API for text cleanup and PDF extraction
    - API key from https://console.anthropic.com
 
-3. **Google Cloud** — Google TTS + Gemini image generation
-   - API key from https://aistudio.google.com/apikey
-   - One key covers both TTS and Gemini
+3. **Google Cloud** — Text-to-Speech
+   - API key from https://console.cloud.google.com/apis/credentials
+   - Enable the **Cloud Text-to-Speech API** on the project
 
-4. **Domain registrar** (optional) — For custom domain
+4. **Google AI Studio** — Gemini image generation
+   - API key from https://aistudio.google.com/apikey
+
+5. **Domain registrar** (optional) — For custom domain
    - Any registrar works; Cloudflare recommended for free proxying
 
 ## Environment Setup
@@ -40,7 +43,7 @@ The `.env` file includes `FLY_API_TOKEN`, which the `fly` CLI picks up automatic
 To push API key secrets to Fly.io after setting them in `.env`:
 
 ```bash
-./scripts/sync-secrets.sh push    # pushes ANTHROPIC_API_KEY, GOOGLE_API_KEY, ADMIN_TOKEN, PUBLIC_URL
+./scripts/sync-secrets.sh push    # pushes ANTHROPIC_API_KEY, GOOGLE_TTS_API_KEY, GOOGLE_STUDIO_API_KEY, ADMIN_TOKEN, PUBLIC_URL
 ./scripts/sync-secrets.sh status  # shows what's set locally vs on Fly
 ```
 
@@ -78,7 +81,8 @@ echo "Save this admin token: $ADMIN_TOKEN"
 
 fly secrets set \
   ANTHROPIC_API_KEY="sk-ant-..." \
-  GOOGLE_API_KEY="..." \
+  GOOGLE_TTS_API_KEY="AIza..." \
+  GOOGLE_STUDIO_API_KEY="AIza..." \
   ADMIN_TOKEN="$ADMIN_TOKEN" \
   PUBLIC_URL="https://my-tts-podcast.fly.dev"
 ```
