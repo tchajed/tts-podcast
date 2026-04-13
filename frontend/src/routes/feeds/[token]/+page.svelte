@@ -109,6 +109,8 @@
 </script>
 
 {#if feed}
+	<p class="mb-2"><a href="/">&larr; All feeds</a></p>
+
 	<div class="flex-between mb-2">
 		<div>
 			<h2>{feed.title}</h2>
