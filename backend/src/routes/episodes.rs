@@ -302,6 +302,89 @@ async fn delete_episode(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_detect_source_type_arxiv() {
+        assert_eq!(detect_source_type("https://arxiv.org/abs/2301.12345"), "arxiv");
+    }
+
+    #[test]
+    fn test_detect_source_type_ar5iv() {
+        assert_eq!(detect_source_type("https://ar5iv.org/abs/2301.12345"), "arxiv");
+    }
+
+    #[test]
+    fn test_detect_source_type_article() {
+        assert_eq!(detect_source_type("https://example.com/some-article"), "article");
+    }
+
+    #[test]
+    fn test_extract_arxiv_id_standard() {
+        assert_eq!(
+            extract_arxiv_id("https://arxiv.org/abs/2301.12345"),
+            Some("2301.12345".into())
+        );
+    }
+
+    #[test]
+    fn test_extract_arxiv_id_ar5iv() {
+        assert_eq!(
+            extract_arxiv_id("https://ar5iv.org/abs/2301.12345"),
+            Some("2301.12345".into())
+        );
+    }
+
+    #[test]
+    fn test_extract_arxiv_id_with_version() {
+        assert_eq!(
+            extract_arxiv_id("https://arxiv.org/abs/2301.12345v2"),
+            Some("2301.12345v2".into())
+        );
+    }
+
+    #[test]
+    fn test_extract_arxiv_id_with_query() {
+        assert_eq!(
+            extract_arxiv_id("https://arxiv.org/abs/2301.12345?context=cs"),
+            Some("2301.12345".into())
+        );
+    }
+
+    #[test]
+    fn test_extract_arxiv_id_with_trailing_slash() {
+        assert_eq!(
+            extract_arxiv_id("https://arxiv.org/abs/2301.12345/"),
+            Some("2301.12345".into())
+        );
+    }
+
+    #[test]
+    fn test_extract_arxiv_id_no_match() {
+        assert_eq!(extract_arxiv_id("https://example.com/article"), None);
+    }
+
+    #[test]
+    fn test_validate_tts_provider_google() {
+        let result = validate_tts_provider(Some(&"google".into()), "google".into());
+        assert_eq!(result.unwrap(), "google");
+    }
+
+    #[test]
+    fn test_validate_tts_provider_invalid() {
+        let result = validate_tts_provider(Some(&"invalid".into()), "google".into());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_tts_provider_none_uses_default() {
+        let result = validate_tts_provider(None, "google".into());
+        assert_eq!(result.unwrap(), "google");
+    }
+}
+
 async fn retry_episode(
     State(state): State<AppState>,
     Path((feed_token, episode_id)): Path<(String, String)>,

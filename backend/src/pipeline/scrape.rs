@@ -97,6 +97,68 @@ fn extract_arxiv_id(url: &str) -> Option<String> {
     None
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_arxiv_id_standard() {
+        assert_eq!(
+            extract_arxiv_id("https://arxiv.org/abs/2301.12345"),
+            Some("2301.12345".into())
+        );
+    }
+
+    #[test]
+    fn test_extract_arxiv_id_ar5iv() {
+        assert_eq!(
+            extract_arxiv_id("https://ar5iv.org/abs/2301.12345"),
+            Some("2301.12345".into())
+        );
+    }
+
+    #[test]
+    fn test_extract_arxiv_id_none() {
+        assert_eq!(extract_arxiv_id("https://example.com"), None);
+    }
+
+    #[test]
+    fn test_parse_arxiv_title_valid() {
+        let xml = r#"<?xml version="1.0"?>
+<feed><entry><title>Attention Is All You Need</title></entry></feed>"#;
+        assert_eq!(parse_arxiv_title(xml), Some("Attention Is All You Need".into()));
+    }
+
+    #[test]
+    fn test_parse_arxiv_title_with_newlines() {
+        let xml = r#"<feed><entry><title>Multi
+Line
+Title</title></entry></feed>"#;
+        assert_eq!(parse_arxiv_title(xml), Some("Multi Line Title".into()));
+    }
+
+    #[test]
+    fn test_parse_arxiv_title_no_entry() {
+        assert_eq!(parse_arxiv_title("<feed></feed>"), None);
+    }
+
+    #[test]
+    fn test_parse_arxiv_title_no_title() {
+        assert_eq!(parse_arxiv_title("<feed><entry></entry></feed>"), None);
+    }
+
+    #[test]
+    fn test_extract_readable_basic() {
+        let html = r#"<html><head><title>Test Page</title></head>
+            <body><p>Hello world, this is a test paragraph with enough content.</p></body></html>"#;
+        let result = extract_readable(html, "https://example.com/page");
+        assert!(result.is_ok());
+        let (title, text) = result.unwrap();
+        assert!(!title.is_empty());
+        assert!(!text.is_empty());
+    }
+}
+
 fn parse_arxiv_title(xml: &str) -> Option<String> {
     let entry_start = xml.find("<entry>")?;
     let after_entry = &xml[entry_start..];

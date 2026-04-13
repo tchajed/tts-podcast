@@ -130,6 +130,49 @@ async fn rss_feed(
     ))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_xml_escape_ampersand() {
+        assert_eq!(xml_escape("A & B"), "A &amp; B");
+    }
+
+    #[test]
+    fn test_xml_escape_angle_brackets() {
+        assert_eq!(xml_escape("<tag>"), "&lt;tag&gt;");
+    }
+
+    #[test]
+    fn test_xml_escape_quotes() {
+        assert_eq!(xml_escape(r#"say "hello""#), "say &quot;hello&quot;");
+    }
+
+    #[test]
+    fn test_xml_escape_apostrophe() {
+        assert_eq!(xml_escape("it's"), "it&apos;s");
+    }
+
+    #[test]
+    fn test_xml_escape_all_special() {
+        assert_eq!(
+            xml_escape(r#"<a href="x">&'y'"#),
+            "&lt;a href=&quot;x&quot;&gt;&amp;&apos;y&apos;"
+        );
+    }
+
+    #[test]
+    fn test_xml_escape_no_special() {
+        assert_eq!(xml_escape("plain text"), "plain text");
+    }
+
+    #[test]
+    fn test_xml_escape_empty() {
+        assert_eq!(xml_escape(""), "");
+    }
+}
+
 fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")

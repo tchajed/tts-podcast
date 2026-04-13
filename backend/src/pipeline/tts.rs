@@ -93,6 +93,74 @@ fn split_sentences(text: &str) -> Vec<String> {
     sentences
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_split_sentences_basic() {
+        let result = split_sentences("Hello world. How are you? Fine!");
+        assert_eq!(result, vec!["Hello world.", " How are you?", " Fine!"]);
+    }
+
+    #[test]
+    fn test_split_sentences_no_punctuation() {
+        let result = split_sentences("No ending punctuation");
+        assert_eq!(result, vec!["No ending punctuation"]);
+    }
+
+    #[test]
+    fn test_split_sentences_empty() {
+        let result = split_sentences("");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_chunk_text_single_chunk() {
+        let text = "Short text.";
+        let chunks = chunk_text(text, 100);
+        assert_eq!(chunks, vec!["Short text."]);
+    }
+
+    #[test]
+    fn test_chunk_text_splits_on_sentence_boundary() {
+        let text = "First sentence. Second sentence. Third sentence.";
+        let chunks = chunk_text(text, 20);
+        assert_eq!(chunks.len(), 3);
+        assert_eq!(chunks[0], "First sentence.");
+        assert_eq!(chunks[1], " Second sentence.");
+        assert_eq!(chunks[2], " Third sentence.");
+    }
+
+    #[test]
+    fn test_chunk_text_empty() {
+        let chunks = chunk_text("", 100);
+        assert_eq!(chunks, vec![""]);
+    }
+
+    #[test]
+    fn test_chunk_text_long_sentence_not_split() {
+        // A single sentence longer than max_chars stays in one chunk
+        let text = "This is a very long sentence that exceeds the max.";
+        let chunks = chunk_text(text, 10);
+        assert_eq!(chunks, vec!["This is a very long sentence that exceeds the max."]);
+    }
+
+    #[test]
+    fn test_chunk_text_respects_max_chars() {
+        let sentences: Vec<String> = (0..10).map(|i| format!("Sentence {i}.")).collect();
+        let text = sentences.join(" ");
+        let chunks = chunk_text(&text, 50);
+        for chunk in &chunks {
+            // Each chunk should be under max_chars (unless a single sentence exceeds it)
+            assert!(chunk.len() <= 50 || !chunk.contains(". "));
+        }
+        // Reassembled text should match original
+        let reassembled: String = chunks.join("");
+        assert_eq!(reassembled, text);
+    }
+}
+
 async fn tts_google(
     client: &reqwest::Client,
     config: &AppConfig,
