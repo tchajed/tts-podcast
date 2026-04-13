@@ -6,9 +6,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use uuid::Uuid;
-
 use crate::error::{AppError, AppResult};
+use crate::ids::{new_id, new_token};
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -95,8 +94,8 @@ async fn create_feed(
         ));
     }
 
-    let id = Uuid::new_v4().to_string();
-    let feed_token = Uuid::new_v4().to_string();
+    let id = new_id();
+    let feed_token = new_token();
 
     sqlx::query(
         "INSERT INTO feeds (id, slug, title, description, feed_token, tts_default)

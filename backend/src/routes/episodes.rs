@@ -6,9 +6,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use uuid::Uuid;
-
 use crate::error::{AppError, AppResult};
+use crate::ids::new_id;
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -132,8 +131,8 @@ async fn submit_episode(
         req.url.clone()
     };
 
-    let episode_id = Uuid::new_v4().to_string();
-    let job_id = Uuid::new_v4().to_string();
+    let episode_id = new_id();
+    let job_id = new_id();
 
     let mut tx = state.pool.begin().await?;
 
@@ -223,8 +222,8 @@ async fn upload_pdf(
     let tts_provider = validate_tts_provider(tts_provider_field.as_ref(), default)?;
     let title = title.unwrap_or_else(|| "PDF Upload".into());
 
-    let episode_id = Uuid::new_v4().to_string();
-    let job_id = Uuid::new_v4().to_string();
+    let episode_id = new_id();
+    let job_id = new_id();
 
     // Write PDF to temp file for the pdf pipeline stage
     let pdf_path = format!("/tmp/{}.pdf", episode_id);
@@ -426,7 +425,7 @@ async fn retry_episode(
         _ => "pending",
     };
 
-    let job_id = Uuid::new_v4().to_string();
+    let job_id = new_id();
     let mut tx = state.pool.begin().await?;
 
     sqlx::query("UPDATE episodes SET status = $1, error_msg = NULL WHERE id = $2")

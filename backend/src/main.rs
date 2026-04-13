@@ -1,6 +1,7 @@
 mod config;
 mod db;
 mod error;
+mod ids;
 mod pipeline;
 mod routes;
 mod worker;

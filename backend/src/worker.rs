@@ -1,9 +1,8 @@
 use anyhow::Result;
 use sqlx::{FromRow, SqlitePool};
 use std::time::Duration;
-use uuid::Uuid;
-
 use crate::config::AppConfig;
+use crate::ids::new_id;
 use crate::pipeline::storage::StorageClient;
 
 #[derive(Debug, FromRow)]
@@ -124,7 +123,7 @@ async fn complete_job(pool: &SqlitePool, job: &Job, config: &AppConfig) -> Resul
     // Stage transitions
     match job.job_type.as_str() {
         "scrape" | "pdf" => {
-            let job_id = Uuid::new_v4().to_string();
+            let job_id = new_id();
             sqlx::query(
                 "INSERT INTO jobs (id, episode_id, job_type, status) VALUES ($1, $2, 'clean', 'queued')",
             )
@@ -138,7 +137,7 @@ async fn complete_job(pool: &SqlitePool, job: &Job, config: &AppConfig) -> Resul
                 .await?;
         }
         "clean" => {
-            let job_id = Uuid::new_v4().to_string();
+            let job_id = new_id();
             sqlx::query(
                 "INSERT INTO jobs (id, episode_id, job_type, status) VALUES ($1, $2, 'tts', 'queued')",
             )
@@ -161,7 +160,7 @@ async fn complete_job(pool: &SqlitePool, job: &Job, config: &AppConfig) -> Resul
             .await?;
 
             if config.generate_images {
-                let job_id = Uuid::new_v4().to_string();
+                let job_id = new_id();
                 sqlx::query(
                     "INSERT INTO jobs (id, episode_id, job_type, status) VALUES ($1, $2, 'image', 'queued')",
                 )
