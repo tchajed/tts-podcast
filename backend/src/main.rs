@@ -70,7 +70,7 @@ async fn main() {
 
     let app = Router::new()
         .merge(routes::rss_router())
-        .nest("", routes::api_router())
+        .merge(routes::api_router())
         .with_state(state)
         .fallback_service(serve_static)
         .layer(cors)

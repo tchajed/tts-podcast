@@ -63,6 +63,7 @@ pub struct FeedListItem {
     pub slug: String,
     pub title: String,
     pub description: String,
+    pub feed_token: String,
     pub tts_default: String,
     pub created_at: String,
     pub episode_count: i32,
@@ -139,7 +140,7 @@ async fn list_feeds(
     require_admin(&headers, &state.config.admin_token)?;
 
     let feeds = sqlx::query_as::<_, FeedListItem>(
-        "SELECT f.id, f.slug, f.title, f.description, f.tts_default, f.created_at,
+        "SELECT f.id, f.slug, f.title, f.description, f.feed_token, f.tts_default, f.created_at,
                 CAST(COUNT(e.id) AS INTEGER) as episode_count
          FROM feeds f
          LEFT JOIN episodes e ON e.feed_id = f.id

@@ -78,8 +78,8 @@ pub async fn run(
 
     // Sonnet for articles, Opus for academic content
     let model = match source_type.as_str() {
-        "arxiv" | "pdf" => "claude-opus-4-6-20250514",
-        _ => "claude-sonnet-4-6-20250514",
+        "arxiv" | "pdf" => "claude-opus-4-6",
+        _ => "claude-sonnet-4-6",
     };
 
     let client = reqwest::Client::new();

@@ -6,20 +6,30 @@ RUN bun install --frozen-lockfile
 COPY frontend/ .
 RUN bun run build
 
-# Backend build stage
-FROM rust:1.83-slim AS backend-builder
+# Backend dependency planner
+FROM rust:1.94-slim AS chef
+RUN cargo install cargo-chef
 WORKDIR /app
+
+FROM chef AS planner
+COPY backend/ .
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Backend build stage
+FROM chef AS backend-builder
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
 COPY backend/ .
 RUN cargo build --release
 
 # Runtime stage
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Litestream for SQLite backup to Tigris
-ADD https://github.com/benbjohnson/litestream/releases/download/v0.3.13/litestream-v0.3.13-linux-amd64.tar.gz /tmp/
-RUN tar -C /usr/local/bin -xzf /tmp/litestream-v0.3.13-linux-amd64.tar.gz && rm /tmp/litestream-*.tar.gz
+ADD https://github.com/benbjohnson/litestream/releases/download/v0.5.11/litestream-0.5.11-linux-x86_64.tar.gz /tmp/
+RUN tar -C /usr/local/bin -xzf /tmp/litestream-*-linux-x86_64.tar.gz && rm /tmp/litestream-*.tar.gz
 
 COPY --from=backend-builder /app/target/release/tts-podcast-backend /usr/local/bin/backend
 COPY --from=frontend-builder /frontend/build /app/static

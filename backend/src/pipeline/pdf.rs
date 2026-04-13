@@ -24,7 +24,7 @@ pub async fn run(
     // Send PDF to Claude vision for text extraction
     let client = reqwest::Client::new();
     let request = ClaudeRequest {
-        model: "claude-sonnet-4-6-20250514".to_string(),
+        model: "claude-sonnet-4-6".to_string(),
         max_tokens: 8192,
         temperature: 0.0,
         system: PDF_SYSTEM_PROMPT.to_string(),
@@ -105,7 +105,7 @@ async fn extract_title_from_text(
     let snippet: String = text.chars().take(2000).collect();
 
     let request = serde_json::json!({
-        "model": "claude-sonnet-4-6-20250514",
+        "model": "claude-sonnet-4-6",
         "max_tokens": 100,
         "temperature": 0.0,
         "messages": [{

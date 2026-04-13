@@ -1,4 +1,4 @@
-app = "personal-podcast"
+app = "tchajed-podcast"
 primary_region = "sjc"
 
 [build]

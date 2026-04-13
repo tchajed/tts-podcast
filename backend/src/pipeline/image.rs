@@ -62,7 +62,7 @@ async fn generate_summary(
     let snippet: String = text.chars().take(4000).collect();
 
     let request = serde_json::json!({
-        "model": "claude-sonnet-4-6-20250514",
+        "model": "claude-sonnet-4-6",
         "max_tokens": 200,
         "temperature": 0.0,
         "messages": [{
