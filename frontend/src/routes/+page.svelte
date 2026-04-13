@@ -1,7 +1,8 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { listFeeds, createFeed, deleteFeed, type Feed } from '$lib/api';
 
-	let adminToken = $state('');
+	let adminToken = $state(localStorage.getItem('adminToken') ?? '');
 	let feeds = $state<Feed[]>([]);
 	let error = $state('');
 	let loaded = $state(false);
@@ -18,6 +19,7 @@
 		try {
 			error = '';
 			feeds = await listFeeds(adminToken);
+			localStorage.setItem('adminToken', adminToken);
 			loaded = true;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load feeds';
@@ -56,6 +58,10 @@
 	function copyToClipboard(text: string) {
 		navigator.clipboard.writeText(text);
 	}
+
+	onMount(() => {
+		if (adminToken) loadFeeds();
+	});
 </script>
 
 <div>
