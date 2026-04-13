@@ -97,6 +97,18 @@ fly deploy
 
 This builds a multi-stage Docker image (Bun builds frontend, Rust builds backend), adds Litestream, and deploys. Migrations run automatically on startup. Litestream begins backing up SQLite to Tigris immediately.
 
+**Troubleshooting remote builds:** `fly deploy` uses Depot for remote Docker builds, which connects via gRPC/TLS with SNI-based routing. This can hang indefinitely in environments that use HTTP CONNECT proxies (e.g., Docker sandboxes, corporate proxies). If `fly deploy` hangs at the builder provisioning step, use one of these workarounds:
+
+```bash
+# Build locally and push the image (requires local Docker)
+fly deploy --local-only
+
+# Or disable Depot and use Fly's own builders (slow first build ~20min, fast after)
+fly deploy --depot=false
+```
+
+Note: The first build compiles all Rust dependencies from scratch (~20 min on the Fly remote builder). Subsequent deploys reuse the cached dependency layer via cargo-chef and only recompile app code (~2 min).
+
 Verify:
 ```bash
 curl https://my-tts-podcast.fly.dev/api/v1/feeds \
