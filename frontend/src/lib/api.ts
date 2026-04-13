@@ -131,6 +131,13 @@ export async function deleteEpisode(feedToken: string, episodeId: string): Promi
 	});
 }
 
+export async function getEpisodeText(
+	feedToken: string,
+	episodeId: string
+): Promise<{ cleaned_text: string | null; raw_text: string | null }> {
+	return apiFetch(`/api/v1/feeds/${feedToken}/episodes/${episodeId}/text`);
+}
+
 export async function retryEpisode(feedToken: string, episodeId: string): Promise<unknown> {
 	return apiFetch(`/api/v1/feeds/${feedToken}/episodes/${episodeId}/retry`, {
 		method: 'POST',

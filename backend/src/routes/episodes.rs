@@ -25,6 +25,10 @@ pub fn router() -> Router<AppState> {
             get(get_episode).delete(delete_episode),
         )
         .route(
+            "/api/v1/feeds/{feed_token}/episodes/{episode_id}/text",
+            get(get_episode_text),
+        )
+        .route(
             "/api/v1/feeds/{feed_token}/episodes/{episode_id}/retry",
             post(retry_episode),
         )
@@ -386,6 +390,27 @@ mod tests {
         let result = validate_tts_provider(None, "google".into());
         assert_eq!(result.unwrap(), "google");
     }
+}
+
+async fn get_episode_text(
+    State(state): State<AppState>,
+    Path((feed_token, episode_id)): Path<(String, String)>,
+) -> AppResult<Json<serde_json::Value>> {
+    let feed_id = resolve_feed(&state.pool, &feed_token).await?;
+
+    let (cleaned_text, raw_text) = sqlx::query_as::<_, (Option<String>, Option<String>)>(
+        "SELECT cleaned_text, raw_text FROM episodes WHERE id = $1 AND feed_id = $2",
+    )
+    .bind(&episode_id)
+    .bind(&feed_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or(AppError::NotFound)?;
+
+    Ok(Json(serde_json::json!({
+        "cleaned_text": cleaned_text,
+        "raw_text": raw_text,
+    })))
 }
 
 async fn retry_episode(

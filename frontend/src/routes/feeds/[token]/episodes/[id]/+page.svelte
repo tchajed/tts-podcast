@@ -1,11 +1,14 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { onMount, onDestroy } from 'svelte';
-	import { getEpisode, retryEpisode, formatDuration, type Episode } from '$lib/api';
+	import { getEpisode, getEpisodeText, retryEpisode, formatDuration, type Episode } from '$lib/api';
 
 	let episode = $state<Episode | null>(null);
 	let error = $state('');
 	let retrying = $state(false);
+	let showText = $state(false);
+	let cleanedText = $state<string | null>(null);
+	let loadingText = $state(false);
 
 	let token = $derived($page.params.token ?? '');
 	let episodeId = $derived($page.params.id ?? '');
@@ -42,6 +45,25 @@
 		} finally {
 			retrying = false;
 		}
+	}
+
+	async function toggleText() {
+		if (showText) {
+			showText = false;
+			return;
+		}
+		if (cleanedText === null) {
+			loadingText = true;
+			try {
+				const data = await getEpisodeText(token, episodeId);
+				cleanedText = data.cleaned_text;
+			} catch (e) {
+				error = e instanceof Error ? e.message : 'Failed to load text';
+			} finally {
+				loadingText = false;
+			}
+		}
+		showText = true;
 	}
 
 	function badgeClass(status: string): string {
@@ -115,6 +137,19 @@
 			<div class="mt-2">
 				<audio controls src={episode.audio_url} style="width: 100%;" preload="none"></audio>
 			</div>
+		{/if}
+
+		<div class="mt-2">
+			<button onclick={toggleText} disabled={loadingText}>
+				{loadingText ? 'Loading...' : showText ? 'Hide Text' : 'View Cleaned Text'}
+			</button>
+		</div>
+		{#if showText && cleanedText}
+			<div class="mt-2" style="white-space: pre-wrap; font-size: 0.875rem; max-height: 400px; overflow-y: auto; padding: 0.75rem; background: var(--surface); border-radius: 6px;">
+				{cleanedText}
+			</div>
+		{:else if showText && cleanedText === undefined}
+			<p class="muted mt-2">No cleaned text available yet.</p>
 		{/if}
 	</div>
 {:else if error}
