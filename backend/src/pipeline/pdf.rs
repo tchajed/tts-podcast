@@ -4,67 +4,117 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::AppConfig;
 
-/// PDF extraction via Claude vision.
-/// Reads pages as images (rendered externally or via pdfium), sends to Claude
-/// for text extraction. For now, we read the raw PDF bytes and send them
-/// directly to Claude as a document (Claude supports PDF input).
+/// PDF extraction via page-by-page image rendering + Claude vision.
+/// Uses pdftoppm to render each page as a JPEG, then sends each page
+/// to Claude for text extraction and concatenates the results.
 pub async fn run(
     episode_id: &str,
     pool: &sqlx::SqlitePool,
     config: &AppConfig,
 ) -> Result<()> {
     let pdf_path = format!("/tmp/{}.pdf", episode_id);
+    let page_dir = format!("/tmp/{}_pages", episode_id);
 
-    let pdf_bytes = tokio::fs::read(&pdf_path)
+    // Create output directory for page images
+    tokio::fs::create_dir_all(&page_dir).await?;
+
+    // Render PDF pages to JPEG using pdftoppm
+    let output = tokio::process::Command::new("pdftoppm")
+        .args(["-jpeg", "-r", "200", &pdf_path, &format!("{}/page", page_dir)])
+        .output()
         .await
-        .context("Failed to read temp PDF file")?;
+        .context("Failed to run pdftoppm")?;
 
-    let pdf_b64 = base64::engine::general_purpose::STANDARD.encode(&pdf_bytes);
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("pdftoppm failed: {stderr}");
+    }
 
-    // Send PDF to Claude vision for text extraction
-    let client = reqwest::Client::new();
-    let request = ClaudeRequest {
-        model: "claude-sonnet-4-6".to_string(),
-        max_tokens: 8192,
-        temperature: 0.0,
-        system: PDF_SYSTEM_PROMPT.to_string(),
-        messages: vec![ClaudeMessage {
-            role: "user".to_string(),
-            content: vec![
-                ContentBlock::Image {
-                    r#type: "image".to_string(),
-                    source: ImageSource {
-                        r#type: "base64".to_string(),
-                        media_type: "application/pdf".to_string(),
-                        data: pdf_b64,
+    // Collect page image files in order
+    let mut page_files: Vec<String> = Vec::new();
+    let mut entries = tokio::fs::read_dir(&page_dir).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        let path = entry.path();
+        if path.extension().map_or(false, |e| e == "jpg") {
+            page_files.push(path.to_string_lossy().to_string());
+        }
+    }
+    page_files.sort();
+
+    if page_files.is_empty() {
+        anyhow::bail!("No pages rendered from PDF");
+    }
+
+    tracing::info!(
+        "PDF rendered {} pages for episode {episode_id}",
+        page_files.len()
+    );
+
+    // Process each page through Claude vision
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()?;
+    let mut all_text = Vec::new();
+
+    for (i, page_path) in page_files.iter().enumerate() {
+        let page_bytes = tokio::fs::read(page_path).await?;
+        let page_b64 = base64::engine::general_purpose::STANDARD.encode(&page_bytes);
+
+        tracing::info!(
+            "Extracting text from page {}/{} for episode {episode_id}",
+            i + 1,
+            page_files.len()
+        );
+
+        let request = ClaudeRequest {
+            model: "claude-sonnet-4-6".to_string(),
+            max_tokens: 4096,
+            temperature: 0.0,
+            system: PDF_SYSTEM_PROMPT.to_string(),
+            messages: vec![ClaudeMessage {
+                role: "user".to_string(),
+                content: vec![
+                    ContentBlock::Image {
+                        r#type: "image".to_string(),
+                        source: ImageSource {
+                            r#type: "base64".to_string(),
+                            media_type: "image/jpeg".to_string(),
+                            data: page_b64,
+                        },
                     },
-                },
-                ContentBlock::Text {
-                    r#type: "text".to_string(),
-                    text: "Extract all text from this PDF document.".to_string(),
-                },
-            ],
-        }],
-    };
+                    ContentBlock::Text {
+                        r#type: "text".to_string(),
+                        text: format!("Extract all text from page {} of this document.", i + 1),
+                    },
+                ],
+            }],
+        };
 
-    let resp = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &config.anthropic_api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .json(&request)
-        .send()
-        .await?
-        .error_for_status()
-        .context("Claude API request failed for PDF extraction")?;
+        let resp = client
+            .post("https://api.anthropic.com/v1/messages")
+            .header("x-api-key", &config.anthropic_api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .json(&request)
+            .send()
+            .await?
+            .error_for_status()
+            .context(format!("Claude API failed on page {}", i + 1))?;
 
-    let claude_resp: ClaudeResponse = resp.json().await?;
-    let raw_text = claude_resp
-        .content
-        .iter()
-        .map(|ResponseBlock::Text { text }| text.as_str())
-        .collect::<Vec<_>>()
-        .join("\n");
+        let claude_resp: ClaudeResponse = resp.json().await?;
+        let page_text: String = claude_resp
+            .content
+            .iter()
+            .map(|ResponseBlock::Text { text }| text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if !page_text.is_empty() {
+            all_text.push(page_text);
+        }
+    }
+
+    let raw_text = all_text.join("\n\n");
 
     if raw_text.is_empty() {
         anyhow::bail!("Empty text extracted from PDF");
@@ -90,8 +140,9 @@ pub async fn run(
         .execute(pool)
         .await?;
 
-    // Clean up temp PDF
+    // Clean up temp files
     let _ = tokio::fs::remove_file(&pdf_path).await;
+    let _ = tokio::fs::remove_dir_all(&page_dir).await;
 
     Ok(())
 }
@@ -101,7 +152,6 @@ async fn extract_title_from_text(
     config: &AppConfig,
     text: &str,
 ) -> Result<String> {
-    // Use first ~2000 chars
     let snippet: String = text.chars().take(2000).collect();
 
     let request = serde_json::json!({
@@ -137,7 +187,7 @@ async fn extract_title_from_text(
     Ok(title.trim().to_string())
 }
 
-const PDF_SYSTEM_PROMPT: &str = r#"You are extracting text from a PDF document for text-to-speech conversion.
+const PDF_SYSTEM_PROMPT: &str = r#"You are extracting text from a page of a PDF document for text-to-speech conversion.
 
 Rules:
 - Extract all text content in reading order (top-to-bottom, respecting column layout).
