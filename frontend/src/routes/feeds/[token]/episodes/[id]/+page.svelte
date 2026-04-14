@@ -123,11 +123,11 @@
 			</tr>
 			<tr>
 				<td class="muted" style="padding: 0.25rem 1rem 0.25rem 0;">Published</td>
-				<td>{episode.pub_date ? new Date(episode.pub_date).toLocaleString() : '—'}</td>
+				<td>{episode.pub_date ? new Date(episode.pub_date + 'Z').toLocaleString() : '—'}</td>
 			</tr>
 			<tr>
 				<td class="muted" style="padding: 0.25rem 1rem 0.25rem 0;">Created</td>
-				<td>{new Date(episode.created_at).toLocaleString()}</td>
+				<td>{new Date(episode.created_at + 'Z').toLocaleString()}</td>
 			</tr>
 		</tbody></table>
 
