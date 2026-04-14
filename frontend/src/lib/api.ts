@@ -162,11 +162,30 @@ export async function deleteEpisode(feedToken: string, episodeId: string): Promi
 	});
 }
 
+export interface Section {
+	title: string;
+	start_secs: number;
+}
+
 export async function getEpisodeText(
 	feedToken: string,
 	episodeId: string
-): Promise<{ cleaned_text: string | null; raw_text: string | null }> {
+): Promise<{
+	cleaned_text: string | null;
+	transcript: string | null;
+	raw_text: string | null;
+	sections: Section[] | null;
+}> {
 	return apiFetch(`/api/v1/feeds/${feedToken}/episodes/${episodeId}/text`);
+}
+
+export function formatTimestamp(secs: number, useHours: boolean): string {
+	const total = Math.max(0, Math.floor(secs));
+	const h = Math.floor(total / 3600);
+	const m = Math.floor((total % 3600) / 60);
+	const s = total % 60;
+	const pad = (n: number) => n.toString().padStart(2, '0');
+	return useHours ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
 export async function retryEpisode(feedToken: string, episodeId: string): Promise<unknown> {

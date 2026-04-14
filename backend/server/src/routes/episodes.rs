@@ -425,9 +425,9 @@ async fn get_episode_text(
 ) -> AppResult<Json<serde_json::Value>> {
     let feed_id = resolve_feed(&state.pool, &feed_token).await?;
 
-    let (cleaned_text, transcript, raw_text) =
-        sqlx::query_as::<_, (Option<String>, Option<String>, Option<String>)>(
-            "SELECT cleaned_text, transcript, raw_text FROM episodes WHERE id = $1 AND feed_id = $2",
+    let (cleaned_text, transcript, raw_text, sections_json) =
+        sqlx::query_as::<_, (Option<String>, Option<String>, Option<String>, Option<String>)>(
+            "SELECT cleaned_text, transcript, raw_text, sections_json FROM episodes WHERE id = $1 AND feed_id = $2",
         )
         .bind(&episode_id)
         .bind(&feed_id)
@@ -435,10 +435,15 @@ async fn get_episode_text(
         .await?
         .ok_or(AppError::NotFound)?;
 
+    let sections = sections_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
+
     Ok(Json(serde_json::json!({
         "cleaned_text": cleaned_text,
         "transcript": transcript,
         "raw_text": raw_text,
+        "sections": sections,
     })))
 }
 

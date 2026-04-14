@@ -31,6 +31,12 @@ Rules:
 - Omit the bibliography / references section entirely.
 - Omit appendices, supplementary material, and acknowledgments (everything after the conclusion).
 - Keep all substantive content from the main body — do not summarize or omit findings, methods, or discussion.
+- Mark each major section with a markdown header line of the form
+  `## Section Title` on its own line, blank line before and after. Use the
+  paper's own section names (e.g. "Abstract", "Introduction", "Methods",
+  "Results", "Discussion", "Conclusion"). Do not include the numbering.
+  Do not add subsection headers (no `###`). If the paper has no clear
+  section structure, omit headers entirely.
 - Output only the cleaned text, nothing else."#;
 
 /// Clean raw text for TTS. Dispatches to the configured provider.

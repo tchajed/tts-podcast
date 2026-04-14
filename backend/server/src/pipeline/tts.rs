@@ -44,12 +44,19 @@ pub async fn run(
     let audio_bytes = result.audio.len() as i64;
     let audio_url = storage.upload_episode_audio(episode_id, result.audio).await?;
 
+    let sections_json = if result.sections.is_empty() {
+        None
+    } else {
+        Some(serde_json::to_string(&result.sections)?)
+    };
+
     sqlx::query(
-        "UPDATE episodes SET audio_url = $1, duration_secs = $2, audio_bytes = $3 WHERE id = $4",
+        "UPDATE episodes SET audio_url = $1, duration_secs = $2, audio_bytes = $3, sections_json = $4 WHERE id = $5",
     )
         .bind(&audio_url)
         .bind(result.duration_secs as i32)
         .bind(audio_bytes)
+        .bind(sections_json.as_deref())
         .bind(episode_id)
         .execute(pool)
         .await?;

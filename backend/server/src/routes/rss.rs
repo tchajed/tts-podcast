@@ -37,6 +37,7 @@ struct RssEpisode {
     pub_date: Option<String>,
     audio_bytes: Option<i64>,
     description: Option<String>,
+    sections_json: Option<String>,
 }
 
 async fn rss_feed(
@@ -52,7 +53,7 @@ async fn rss_feed(
     .ok_or(AppError::NotFound)?;
 
     let episodes = sqlx::query_as::<_, RssEpisode>(
-        "SELECT id, title, source_url, audio_url, image_url, duration_secs, pub_date, audio_bytes, description
+        "SELECT id, title, source_url, audio_url, image_url, duration_secs, pub_date, audio_bytes, description, sections_json
          FROM episodes
          WHERE feed_id = $1 AND status = 'done' AND audio_url IS NOT NULL
          ORDER BY pub_date DESC
@@ -85,12 +86,16 @@ async fn rss_feed(
             .description
             .as_deref()
             .unwrap_or_else(|| ep.source_url.as_deref().unwrap_or("PDF upload"));
-        let description = match ep.source_url.as_deref() {
+        let mut description = match ep.source_url.as_deref() {
             Some(url) if !base_description.contains(url) => {
                 format!("{base_description}\n\nSource: {url}")
             }
             _ => base_description.to_string(),
         };
+        if let Some(chapters) = render_chapters(ep.sections_json.as_deref()) {
+            description.push_str("\n\nChapters:\n");
+            description.push_str(&chapters);
+        }
 
         let image_tag = if let Some(ref img_url) = ep.image_url {
             format!(
@@ -235,6 +240,38 @@ fn format_rfc2822(s: &str) -> Option<String> {
     .ok()?;
     let primitive = PrimitiveDateTime::parse(s, &fmt).ok()?;
     primitive.assume_offset(UtcOffset::UTC).format(&Rfc2822).ok()
+}
+
+/// Render stored sections JSON into a human-readable chapter list, one line
+/// per section prefixed with `HH:MM:SS` (or `MM:SS` for short episodes).
+/// Returns None if the JSON is absent/empty/malformed.
+fn render_chapters(sections_json: Option<&str>) -> Option<String> {
+    let json = sections_json?;
+    let sections: Vec<tts_lib::tts::Section> = serde_json::from_str(json).ok()?;
+    if sections.is_empty() {
+        return None;
+    }
+    let use_hours = sections.last().map(|s| s.start_secs >= 3600.0).unwrap_or(false);
+    let mut out = String::new();
+    for s in &sections {
+        out.push_str(&format_timestamp(s.start_secs, use_hours));
+        out.push(' ');
+        out.push_str(&s.title);
+        out.push('\n');
+    }
+    Some(out)
+}
+
+fn format_timestamp(secs: f64, use_hours: bool) -> String {
+    let total = secs.max(0.0) as u64;
+    let h = total / 3600;
+    let m = (total % 3600) / 60;
+    let s = total % 60;
+    if use_hours {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
 }
 
 fn xml_escape(s: &str) -> String {

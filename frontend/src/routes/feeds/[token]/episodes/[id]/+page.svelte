@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { onMount, onDestroy } from 'svelte';
-	import { getEpisode, getEpisodeText, retryEpisode, formatDuration, type Episode } from '$lib/api';
+	import { getEpisode, getEpisodeText, retryEpisode, formatDuration, formatTimestamp, type Episode, type Section } from '$lib/api';
 	import TextModal from '$lib/TextModal.svelte';
 	import { ArrowLeft, ExternalLink, FileUp, Clock, AlertCircle, RotateCcw, FileText, ScrollText } from 'lucide-svelte';
 
@@ -11,7 +11,33 @@
 	let showText = $state<false | 'cleaned' | 'transcript'>(false);
 	let cleanedText = $state<string | null>(null);
 	let transcript = $state<string | null>(null);
+	let sections = $state<Section[] | null>(null);
 	let loadingText = $state(false);
+	let audioEl = $state<HTMLAudioElement | null>(null);
+
+	let useHours = $derived(
+		(episode?.duration_secs ?? 0) >= 3600 ||
+			(sections?.[sections.length - 1]?.start_secs ?? 0) >= 3600
+	);
+
+	async function loadSections() {
+		if (sections !== null) return;
+		try {
+			const data = await getEpisodeText(token, episodeId);
+			cleanedText = data.cleaned_text;
+			transcript = data.transcript ?? null;
+			sections = data.sections ?? [];
+		} catch {
+			// silently ignore — ToC is optional
+			sections = [];
+		}
+	}
+
+	function seekTo(secs: number) {
+		if (!audioEl) return;
+		audioEl.currentTime = secs;
+		audioEl.play().catch(() => {});
+	}
 
 	let token = $derived($page.params.token ?? '');
 	let episodeId = $derived($page.params.id ?? '');
@@ -27,9 +53,15 @@
 
 	onMount(async () => {
 		await loadEpisode();
+		if (episode?.status === 'done') {
+			loadSections();
+		}
 		pollInterval = setInterval(async () => {
 			if (episode && !['done', 'error'].includes(episode.status)) {
 				await loadEpisode();
+				if (episode?.status === 'done') {
+					loadSections();
+				}
 			}
 		}, 5000);
 	});
@@ -56,7 +88,8 @@
 		try {
 			const data = await getEpisodeText(token, episodeId);
 			cleanedText = data.cleaned_text;
-			transcript = (data as { transcript?: string | null }).transcript ?? null;
+			transcript = data.transcript ?? null;
+			sections = data.sections ?? [];
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load text';
 		} finally {
@@ -152,7 +185,31 @@
 
 		{#if episode.status === 'done' && episode.audio_url}
 			<div class="mt-2">
-				<audio controls src={episode.audio_url} style="width: 100%;" preload="metadata"></audio>
+				<audio bind:this={audioEl} controls src={episode.audio_url} style="width: 100%;" preload="metadata"></audio>
+			</div>
+		{/if}
+
+		{#if episode.description}
+			<p class="mt-2" style="white-space: pre-wrap;">{episode.description}</p>
+		{/if}
+
+		{#if sections && sections.length > 0}
+			<div class="mt-2">
+				<h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Chapters</h3>
+				<ul style="list-style: none; padding: 0; margin: 0;">
+					{#each sections as section}
+						<li style="padding: 0.125rem 0;">
+							<button
+								type="button"
+								onclick={() => seekTo(section.start_secs)}
+								style="background: none; border: none; padding: 0; color: var(--link, #2563eb); cursor: pointer; font: inherit; text-align: left;"
+							>
+								<span style="font-variant-numeric: tabular-nums; color: var(--muted, #6b7280); margin-right: 0.5rem;">{formatTimestamp(section.start_secs, useHours)}</span>
+								<span>{section.title}</span>
+							</button>
+						</li>
+					{/each}
+				</ul>
 			</div>
 		{/if}
 
