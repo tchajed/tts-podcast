@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { onMount, onDestroy } from 'svelte';
 	import { getEpisode, getEpisodeText, retryEpisode, formatDuration, type Episode } from '$lib/api';
+	import TextModal from '$lib/TextModal.svelte';
 
 	let episode = $state<Episode | null>(null);
 	let error = $state('');
@@ -62,11 +63,7 @@
 		}
 	}
 
-	async function toggleText(which: 'cleaned' | 'transcript') {
-		if (showText === which) {
-			showText = false;
-			return;
-		}
+	async function openText(which: 'cleaned' | 'transcript') {
 		await loadTextData();
 		showText = which;
 	}
@@ -156,30 +153,27 @@
 		{/if}
 
 		<div class="mt-2 flex" style="gap: 0.5rem;">
-			<button onclick={() => toggleText('cleaned')} disabled={loadingText}>
-				{showText === 'cleaned' ? 'Hide' : 'Cleaned Text'}
+			<button onclick={() => openText('cleaned')} disabled={loadingText}>
+				Cleaned Text
 			</button>
 			{#if transcript}
-				<button onclick={() => toggleText('transcript')} disabled={loadingText}>
-					{showText === 'transcript' ? 'Hide' : 'Transcript'}
+				<button onclick={() => openText('transcript')} disabled={loadingText}>
+					Transcript
 				</button>
 			{/if}
 			{#if loadingText}
 				<span class="muted">Loading...</span>
 			{/if}
 		</div>
-		{#if showText === 'cleaned' && cleanedText}
-			<div class="mt-2" style="white-space: pre-wrap; font-size: 0.875rem; max-height: 400px; overflow-y: auto; padding: 0.75rem; background: var(--surface); border-radius: 6px;">
-				{cleanedText}
-			</div>
-		{:else if showText === 'transcript' && transcript}
-			<div class="mt-2" style="white-space: pre-wrap; font-size: 0.875rem; max-height: 400px; overflow-y: auto; padding: 0.75rem; background: var(--surface); border-radius: 6px;">
-				{transcript}
-			</div>
-		{/if}
 	</div>
 {:else if error}
 	<div class="card" style="border-color: var(--danger); color: var(--danger);">{error}</div>
 {:else}
 	<p class="muted">Loading...</p>
+{/if}
+
+{#if showText === 'cleaned' && cleanedText}
+	<TextModal title="Cleaned Text" text={cleanedText} onclose={() => showText = false} />
+{:else if showText === 'transcript' && transcript}
+	<TextModal title="Transcript" text={transcript} onclose={() => showText = false} />
 {/if}
