@@ -194,6 +194,7 @@ pub struct EpisodeSummary {
     pub tts_chunks_done: i32,
     pub tts_chunks_total: i32,
     pub tts_provider: Option<String>,
+    pub description: Option<String>,
     pub error_msg: Option<String>,
     pub pub_date: Option<String>,
     pub created_at: String,
@@ -214,7 +215,7 @@ async fn get_feed(
     let episodes = sqlx::query_as::<_, EpisodeSummary>(
         "SELECT e.id, e.title, e.source_url, e.source_type, e.status, e.audio_url, e.image_url,
                 e.duration_secs, e.word_count, e.tts_chunks_done, e.tts_chunks_total,
-                e.tts_provider, e.error_msg, e.pub_date, e.created_at, e.summarize,
+                e.tts_provider, e.description, e.error_msg, e.pub_date, e.created_at, e.summarize,
                 (SELECT j.run_after FROM jobs j
                  WHERE j.episode_id = e.id AND j.status = 'queued'
                        AND j.run_after > datetime('now')

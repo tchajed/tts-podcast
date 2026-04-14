@@ -34,6 +34,7 @@ export interface Episode {
 	image_url: string | null;
 	duration_secs: number | null;
 	tts_provider: string | null;
+	description: string | null;
 	error_msg: string | null;
 	pub_date: string | null;
 	created_at: string;
