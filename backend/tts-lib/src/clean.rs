@@ -28,7 +28,9 @@ Rules:
 - Expand abbreviations on first use if the expansion aids comprehension.
 - Replace "in the next section" / "as mentioned above" with brief inline context.
 - Remove LaTeX artifacts, section numbering (e.g. "3.2 Method"), footnote markers.
-- Keep all substantive content — do not summarize or omit findings, methods, or discussion.
+- Omit the bibliography / references section entirely.
+- Omit appendices, supplementary material, and acknowledgments (everything after the conclusion).
+- Keep all substantive content from the main body — do not summarize or omit findings, methods, or discussion.
 - Output only the cleaned text, nothing else."#;
 
 /// Clean raw text for TTS. Dispatches to the configured provider.

@@ -11,6 +11,9 @@ Rules:
 - For two-column layouts, complete the left column before the right column.
 - Ignore page numbers, headers, footers, and running titles.
 - Ignore figure captions and table captions — replace with "[Figure omitted]" or "[Table omitted]".
+- Skip the bibliography / references section entirely.
+- Skip appendices and supplementary material (anything after the conclusion, including sections titled "Appendix", "Supplementary", "Acknowledgments", etc.).
+- If a chunk contains only bibliography or appendix content, output an empty result.
 - Preserve paragraph breaks between pages.
 - Output only the extracted text, nothing else.
 
@@ -23,6 +26,9 @@ Rules:
 - For two-column layouts, complete the left column before the right column.
 - Ignore page numbers, headers, footers, and running titles.
 - Ignore figure captions and table captions — replace with "[Figure omitted]" or "[Table omitted]".
+- Skip the bibliography / references section entirely.
+- Skip appendices and supplementary material (anything after the conclusion, including sections titled "Appendix", "Supplementary", "Acknowledgments", etc.).
+- If a chunk contains only bibliography or appendix content, output an empty result.
 - Preserve paragraph breaks between pages.
 - Output only the extracted text, nothing else. Do not include a title."#;
 
