@@ -221,7 +221,7 @@
 			{/if}
 			{#if ep.status === 'done' && ep.audio_url}
 				<div class="mt-2 flex">
-					<audio controls src={ep.audio_url} preload="none" style="height: 32px;"></audio>
+					<audio controls src={ep.audio_url} preload="metadata" style="height: 32px;"></audio>
 					<span class="muted">{formatDuration(ep.duration_secs)}</span>
 				</div>
 			{/if}

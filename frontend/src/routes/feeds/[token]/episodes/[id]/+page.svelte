@@ -151,7 +151,7 @@
 
 		{#if episode.status === 'done' && episode.audio_url}
 			<div class="mt-2">
-				<audio controls src={episode.audio_url} style="width: 100%;" preload="none"></audio>
+				<audio controls src={episode.audio_url} style="width: 100%;" preload="metadata"></audio>
 			</div>
 		{/if}
 
