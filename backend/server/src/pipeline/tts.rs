@@ -41,12 +41,15 @@ pub async fn run(
 
     let result = tts_lib::tts::synthesize(&tts_text, &tts_config, Some(on_progress)).await?;
 
-    // Upload to storage
+    let audio_bytes = result.audio.len() as i64;
     let audio_url = storage.upload_episode_audio(episode_id, result.audio).await?;
 
-    sqlx::query("UPDATE episodes SET audio_url = $1, duration_secs = $2 WHERE id = $3")
+    sqlx::query(
+        "UPDATE episodes SET audio_url = $1, duration_secs = $2, audio_bytes = $3 WHERE id = $4",
+    )
         .bind(&audio_url)
         .bind(result.duration_secs as i32)
+        .bind(audio_bytes)
         .bind(episode_id)
         .execute(pool)
         .await?;

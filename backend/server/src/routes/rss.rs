@@ -6,6 +6,9 @@ use axum::{
     Router,
 };
 use sqlx::FromRow;
+use time::{
+    format_description::well_known::Rfc2822, PrimitiveDateTime, UtcOffset,
+};
 
 use crate::error::{AppError, AppResult};
 use crate::AppState;
@@ -31,6 +34,7 @@ struct RssEpisode {
     image_url: Option<String>,
     duration_secs: Option<i32>,
     pub_date: Option<String>,
+    audio_bytes: Option<i64>,
 }
 
 async fn rss_feed(
@@ -46,7 +50,7 @@ async fn rss_feed(
     .ok_or(AppError::NotFound)?;
 
     let episodes = sqlx::query_as::<_, RssEpisode>(
-        "SELECT id, title, source_url, audio_url, image_url, duration_secs, pub_date
+        "SELECT id, title, source_url, audio_url, image_url, duration_secs, pub_date, audio_bytes
          FROM episodes
          WHERE feed_id = $1 AND status = 'done' AND audio_url IS NOT NULL
          ORDER BY pub_date DESC
@@ -63,9 +67,14 @@ async fn rss_feed(
 
     let mut items = String::new();
     for ep in &episodes {
-        let pub_date = ep.pub_date.as_deref().unwrap_or("");
+        let pub_date = ep
+            .pub_date
+            .as_deref()
+            .and_then(format_rfc2822)
+            .unwrap_or_default();
         let duration = ep.duration_secs.unwrap_or(0);
         let audio_url = ep.audio_url.as_deref().unwrap_or("");
+        let length = ep.audio_bytes.unwrap_or(0);
         let description = ep
             .source_url
             .as_deref()
@@ -86,7 +95,7 @@ async fn rss_feed(
       <guid isPermaLink="false">{id}</guid>
       <pubDate>{pub_date}</pubDate>
       <description>{description}</description>
-      <enclosure url="{audio_url}" length="0" type="audio/mpeg"/>
+      <enclosure url="{audio_url}" length="{length}" type="audio/mpeg"/>
       <itunes:duration>{duration}</itunes:duration>{image_tag}
     </item>
 "#,
@@ -95,26 +104,43 @@ async fn rss_feed(
             pub_date = pub_date,
             description = xml_escape(description),
             audio_url = xml_escape(audio_url),
+            length = length,
             duration = duration,
             image_tag = image_tag,
         ));
     }
 
+    let channel_image_tag = episodes
+        .iter()
+        .find_map(|e| e.image_url.as_deref())
+        .map(|img_url| {
+            format!(
+                "\n    <itunes:image href=\"{url}\"/>\n    <image>\n      <url>{url}</url>\n      <title>{title}</title>\n      <link>{link}</link>\n    </image>",
+                url = xml_escape(img_url),
+                title = xml_escape(&feed.title),
+                link = xml_escape(&feed_link),
+            )
+        })
+        .unwrap_or_default();
+
     let xml = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>{title}</title>
     <description>{description}</description>
     <link>{link}</link>
+    <atom:link href="{link}" rel="self" type="application/rss+xml"/>
     <language>en-us</language>
     <itunes:author>Personal Podcast</itunes:author>
     <itunes:category text="Technology"/>
+    <itunes:explicit>false</itunes:explicit>{channel_image_tag}
 {items}  </channel>
 </rss>"#,
         title = xml_escape(&feed.title),
         description = xml_escape(&feed.description),
         link = xml_escape(&feed_link),
+        channel_image_tag = channel_image_tag,
         items = items,
     );
 
@@ -171,6 +197,31 @@ mod tests {
     fn test_xml_escape_empty() {
         assert_eq!(xml_escape(""), "");
     }
+
+    #[test]
+    fn test_format_rfc2822_sqlite() {
+        assert_eq!(
+            format_rfc2822("2026-04-14 14:59:47").as_deref(),
+            Some("Tue, 14 Apr 2026 14:59:47 +0000"),
+        );
+    }
+
+    #[test]
+    fn test_format_rfc2822_invalid() {
+        assert_eq!(format_rfc2822("not a date"), None);
+        assert_eq!(format_rfc2822(""), None);
+    }
+}
+
+/// Convert SQLite's `YYYY-MM-DD HH:MM:SS` (UTC) into RFC 2822 for RSS pubDate.
+/// Returns None if the input doesn't parse; callers should fall back to empty.
+fn format_rfc2822(s: &str) -> Option<String> {
+    let fmt = time::format_description::parse(
+        "[year]-[month]-[day] [hour]:[minute]:[second]",
+    )
+    .ok()?;
+    let primitive = PrimitiveDateTime::parse(s, &fmt).ok()?;
+    primitive.assume_offset(UtcOffset::UTC).format(&Rfc2822).ok()
 }
 
 fn xml_escape(s: &str) -> String {
