@@ -36,6 +36,7 @@ export interface Episode {
 	pub_date: string | null;
 	created_at: string;
 	summarize: number;
+	retry_at: string | null;
 }
 
 export interface SubmitEpisodeResponse {

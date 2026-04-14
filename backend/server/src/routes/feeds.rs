@@ -181,6 +181,7 @@ pub struct EpisodeSummary {
     pub pub_date: Option<String>,
     pub created_at: String,
     pub summarize: i32,
+    pub retry_at: Option<String>,
 }
 
 async fn get_feed(
@@ -194,11 +195,15 @@ async fn get_feed(
         .ok_or(AppError::NotFound)?;
 
     let episodes = sqlx::query_as::<_, EpisodeSummary>(
-        "SELECT id, title, source_url, source_type, status, audio_url, image_url,
-                duration_secs, word_count, tts_chunks_done, tts_chunks_total,
-                tts_provider, error_msg, pub_date, created_at, summarize
-         FROM episodes WHERE feed_id = $1
-         ORDER BY created_at DESC
+        "SELECT e.id, e.title, e.source_url, e.source_type, e.status, e.audio_url, e.image_url,
+                e.duration_secs, e.word_count, e.tts_chunks_done, e.tts_chunks_total,
+                e.tts_provider, e.error_msg, e.pub_date, e.created_at, e.summarize,
+                (SELECT j.run_after FROM jobs j
+                 WHERE j.episode_id = e.id AND j.status = 'queued'
+                       AND j.run_after > datetime('now')
+                 ORDER BY j.run_after ASC LIMIT 1) AS retry_at
+         FROM episodes e WHERE e.feed_id = $1
+         ORDER BY e.created_at DESC
          LIMIT 100",
     )
     .bind(&feed.id)

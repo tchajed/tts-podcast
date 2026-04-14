@@ -206,6 +206,11 @@
 					PDF upload
 				{/if}
 			</div>
+			{#if ep.retry_at}
+				<div style="font-size: 0.8rem; margin-top: 0.5rem; color: #92400e;">
+					⏳ Waiting on retry at {new Date(ep.retry_at + 'Z').toLocaleString()}
+				</div>
+			{/if}
 			{#if ep.status === 'error' && ep.error_msg}
 				<div style="color: var(--danger); font-size: 0.85rem; margin-top: 0.5rem;">
 					{ep.error_msg}

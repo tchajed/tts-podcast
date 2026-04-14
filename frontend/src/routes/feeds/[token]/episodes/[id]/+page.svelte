@@ -131,6 +131,13 @@
 			</tr>
 		</tbody></table>
 
+		{#if episode.retry_at}
+			<div class="mt-2" style="background: #fef3c7; padding: 0.75rem; border-radius: 6px; font-size: 0.875rem;">
+				Waiting on retry at {new Date(episode.retry_at + 'Z').toLocaleString()}
+				(upstream service unavailable).
+			</div>
+		{/if}
+
 		{#if episode.status === 'error' && episode.error_msg}
 			<div class="mt-2" style="color: var(--danger); background: #fee2e2; padding: 0.75rem; border-radius: 6px;">
 				<strong>Error:</strong> {episode.error_msg}
