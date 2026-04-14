@@ -10,7 +10,7 @@
 		type Episode,
 	} from '$lib/api';
 	import Toast from '$lib/Toast.svelte';
-	import { ArrowLeft, Rss, Link, FileUp, Plus, FileText, ExternalLink, Play, Clock, AlertCircle, RotateCcw, X } from 'lucide-svelte';
+	import { ArrowLeft, Rss, Link, FileUp, Plus, FileText, ExternalLink, Play, Clock, AlertCircle, RotateCcw, X, Search } from 'lucide-svelte';
 
 	let feed = $state<FeedWithEpisodes | null>(null);
 	let error = $state('');
