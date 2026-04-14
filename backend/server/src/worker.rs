@@ -268,14 +268,21 @@ async fn complete_job(pool: &SqlitePool, job: &Job, config: &AppConfig) -> Resul
     Ok(())
 }
 
-/// Detects upstream model provider outages (503 / overloaded) that we want
-/// to wait out rather than burn retry attempts on.
+/// Detects upstream model provider outages (503 / overloaded) or rate
+/// limiting (429 / quota exhaustion). Both deserve a long backoff without
+/// burning retry attempts — for 503 the service is down, and for 429 a fast
+/// retry just makes things worse.
 fn is_upstream_outage(error_msg: &str) -> bool {
     let s = error_msg.to_ascii_lowercase();
     s.contains("503")
         || s.contains("service unavailable")
         || s.contains("overloaded")
         || s.contains("unavailable")
+        || s.contains("429")
+        || s.contains("too many requests")
+        || s.contains("rate limit")
+        || s.contains("resource_exhausted")
+        || s.contains("quota")
 }
 
 async fn fail_job(
@@ -349,4 +356,31 @@ async fn fail_job(
 
     tx.commit().await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_upstream_outage;
+
+    #[test]
+    fn detects_503_patterns() {
+        assert!(is_upstream_outage("Claude API failed (503): service unavailable"));
+        assert!(is_upstream_outage("model is overloaded"));
+        assert!(is_upstream_outage("Service Unavailable"));
+    }
+
+    #[test]
+    fn detects_429_patterns() {
+        assert!(is_upstream_outage("Gemini API failed (429): rate limit"));
+        assert!(is_upstream_outage("HTTP 429 Too Many Requests"));
+        assert!(is_upstream_outage("RESOURCE_EXHAUSTED: quota exceeded"));
+        assert!(is_upstream_outage("Quota limit reached"));
+    }
+
+    #[test]
+    fn ignores_other_errors() {
+        assert!(!is_upstream_outage("401 unauthorized"));
+        assert!(!is_upstream_outage("connection refused"));
+        assert!(!is_upstream_outage("invalid argument"));
+    }
 }
