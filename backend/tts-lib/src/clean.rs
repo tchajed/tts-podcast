@@ -57,9 +57,11 @@ pub async fn clean(doc: &Document, provider: &Provider) -> Result<Document> {
         _ => "claude-sonnet-4-6",
     };
 
+    // Long papers (e.g. Spanner) produce >8k output tokens after cleaning;
+    // 32k comfortably fits a full conference-paper body without truncation.
     let client = reqwest::Client::new();
     let cleaned_text = provider
-        .chat(&client, claude_model, Some(system_prompt), raw_text, 8192)
+        .chat(&client, claude_model, Some(system_prompt), raw_text, 32768)
         .await?;
 
     let word_count = cleaned_text.split_whitespace().count();
