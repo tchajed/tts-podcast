@@ -19,6 +19,19 @@ pub struct AppConfig {
     pub max_job_attempts: i32,
     pub public_url: String,
     pub generate_images: bool,
+    /// Provider for clean/summarize: "claude" or "gemini"
+    pub ai_provider: String,
+    /// PDF extractor: "claude" or "gemini"
+    pub pdf_extractor: String,
+}
+
+impl AppConfig {
+    pub fn make_provider(&self) -> tts_lib::Provider {
+        match self.ai_provider.as_str() {
+            "gemini" => tts_lib::Provider::gemini_default(self.google_studio_api_key.clone()),
+            _ => tts_lib::Provider::claude(self.anthropic_api_key.clone()),
+        }
+    }
 }
 
 impl AppConfig {
@@ -59,6 +72,8 @@ impl AppConfig {
             generate_images: env::var("GENERATE_IMAGES")
                 .map(|v| v != "false" && v != "0")
                 .unwrap_or(true),
+            ai_provider: env::var("AI_PROVIDER").unwrap_or_else(|_| "claude".into()),
+            pdf_extractor: env::var("PDF_EXTRACTOR").unwrap_or_else(|_| "gemini".into()),
         }
     }
 }

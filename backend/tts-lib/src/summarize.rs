@@ -1,0 +1,43 @@
+use anyhow::Result;
+
+use crate::{Document, Provider};
+
+const SUMMARIZE_SYSTEM_PROMPT: &str = r#"You are preparing a concise podcast-style summary of a text.
+Condense the content into a clear, engaging summary suitable for listening.
+
+Rules:
+- Capture the key ideas, findings, and arguments.
+- Aim for roughly 20-30% of the original length.
+- Use natural, spoken-style language — this will be read aloud by TTS.
+- Maintain the logical flow: introduce the topic, cover main points, conclude.
+- Do not add your own opinions or commentary.
+- Do not use bullet points or numbered lists — write in flowing paragraphs.
+- Output only the summary text, nothing else."#;
+
+/// Summarize cleaned text into a podcast-style transcript.
+pub async fn summarize(doc: &Document, provider: &Provider) -> Result<Document> {
+    let cleaned_text = doc
+        .cleaned_text
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("No cleaned_text available for summarization"))?;
+
+    let client = reqwest::Client::new();
+    let transcript = provider
+        .chat(
+            &client,
+            "claude-sonnet-4-6",
+            Some(SUMMARIZE_SYSTEM_PROMPT),
+            cleaned_text,
+            8192,
+        )
+        .await?;
+
+    let word_count = transcript.split_whitespace().count();
+    tracing::info!("Summarization complete: {word_count} words");
+
+    Ok(Document {
+        transcript: Some(transcript),
+        word_count: Some(word_count),
+        ..doc.clone()
+    })
+}

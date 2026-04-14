@@ -238,7 +238,7 @@ async fn upload_pdf(
     let job_id = new_id();
 
     // Write PDF to temp file for the pdf pipeline stage
-    let pdf_path = format!("/tmp/{}.pdf", episode_id);
+    let pdf_path = format!("/data/{}.pdf", episode_id);
     tokio::fs::write(&pdf_path, &pdf_bytes)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to write temp PDF: {e}"))?;

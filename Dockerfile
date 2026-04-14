@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/li
 COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 COPY backend/ .
-RUN cargo build --release
+RUN cargo build --release -p tts-podcast-backend
 
 # Runtime stage
 FROM debian:trixie-slim

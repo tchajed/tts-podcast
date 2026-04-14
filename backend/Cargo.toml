@@ -1,65 +1,14 @@
-[package]
-name = "tts-podcast-backend"
-version = "0.2.0"
-edition = "2021"
+[workspace]
+members = ["tts-lib", "tts-cli", "server"]
+resolver = "2"
 
-[dependencies]
-# Web framework
-axum = { version = "0.8", features = ["macros", "multipart"] }
-tokio = { version = "1", features = ["full"] }
-tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
-
-# Database (SQLite)
-sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio-rustls", "migrate"] }
-
-# HTTP client
-reqwest = { version = "0.13", features = ["rustls", "json", "multipart"], default-features = false }
-
-# S3 / Tigris
-aws-config = { version = "1", features = ["behavior-version-latest"] }
-aws-sdk-s3 = "1"
-aws-credential-types = "1"
-
-# Serialization
+[workspace.dependencies]
+tts-lib = { path = "tts-lib" }
+anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-
-# IDs
-nanoid = "0.4"
-
-# Time
-time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
-
-# Error handling
-anyhow = "1"
-thiserror = "2"
-
-# Crypto (for content-addressed storage keys)
-sha2 = "0.11"
-hex = "0.4"
-
-# HTML extraction
-readability = "0.3"
-
-# Logging
+reqwest = { version = "0.13", features = ["rustls", "json", "multipart"], default-features = false }
+tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
-# XML parsing (for arXiv API)
-quick-xml = { version = "0.39", features = ["serialize"] }
-
-# Bytes
-bytes = "1"
-
-# AWS byte stream
-aws-smithy-types = "1"
-
-# URL parsing (used by readability)
-url = "2"
-
-# MP3 duration
-mp3-duration = "0.1"
-
-# Base64 (for Google TTS response decoding and Gemini image)
 base64 = "0.22"
+bytes = "1"

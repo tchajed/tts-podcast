@@ -1,0 +1,67 @@
+[package]
+name = "tts-podcast-backend"
+version = "0.2.0"
+edition = "2021"
+
+[dependencies]
+tts-lib = { workspace = true }
+
+# Web framework
+axum = { version = "0.8", features = ["macros", "multipart"] }
+tokio = { workspace = true }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
+
+# Database (SQLite)
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio-rustls", "migrate"] }
+
+# HTTP client
+reqwest = { workspace = true }
+
+# S3 / Tigris
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-sdk-s3 = "1"
+aws-credential-types = "1"
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# IDs
+nanoid = "0.4"
+
+# Time
+time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = "2"
+
+# Crypto (for content-addressed storage keys)
+sha2 = "0.11"
+hex = "0.4"
+
+# HTML extraction
+readability = "0.3"
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# XML parsing (for arXiv API)
+quick-xml = { version = "0.39", features = ["serialize"] }
+
+# Bytes
+bytes = { workspace = true }
+
+# AWS byte stream
+aws-smithy-types = "1"
+
+# URL parsing (used by readability)
+url = "2"
+
+# MP3 duration
+mp3-duration = "0.1"
+
+# Base64 (for Google TTS response decoding and Gemini image)
+base64 = { workspace = true }

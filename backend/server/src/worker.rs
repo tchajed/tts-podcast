@@ -14,6 +14,18 @@ struct Job {
 }
 
 pub async fn run_worker(pool: SqlitePool, config: AppConfig, storage: StorageClient) {
+    // Recover jobs stuck in 'running' from a previous VM that died mid-job
+    match sqlx::query("UPDATE jobs SET status = 'queued' WHERE status = 'running'")
+        .execute(&pool)
+        .await
+    {
+        Ok(res) if res.rows_affected() > 0 => {
+            tracing::warn!("Recovered {} orphaned running jobs to queued", res.rows_affected());
+        }
+        Ok(_) => {}
+        Err(e) => tracing::error!("Failed to recover orphaned jobs: {e}"),
+    }
+
     loop {
         match claim_next_job(&pool).await {
             Ok(Some(job)) => {
