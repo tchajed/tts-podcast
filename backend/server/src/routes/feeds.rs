@@ -15,8 +15,15 @@ pub fn router() -> Router<AppState> {
         .route("/api/v1/feeds", post(create_feed).get(list_feeds))
         .route(
             "/api/v1/feeds/{feed_token}",
-            get(get_feed).delete(delete_feed),
+            get(get_feed).delete(delete_feed).patch(update_feed),
         )
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateFeedRequest {
+    pub slug: Option<String>,
+    pub title: Option<String>,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -223,6 +230,48 @@ async fn get_feed(
         tts_default: feed.tts_default,
         rss_url,
         episodes,
+    }))
+}
+
+async fn update_feed(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(feed_token): Path<String>,
+    Json(req): Json<UpdateFeedRequest>,
+) -> AppResult<Json<FeedResponse>> {
+    require_admin(&headers, &state.config.admin_token)?;
+
+    let feed = sqlx::query_as::<_, FeedRow>("SELECT * FROM feeds WHERE feed_token = $1")
+        .bind(&feed_token)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    let new_slug = req.slug.unwrap_or(feed.slug);
+    let new_title = req.title.unwrap_or(feed.title);
+    let new_description = req.description.unwrap_or(feed.description);
+
+    sqlx::query(
+        "UPDATE feeds SET slug = $1, title = $2, description = $3 WHERE id = $4",
+    )
+    .bind(&new_slug)
+    .bind(&new_title)
+    .bind(&new_description)
+    .bind(&feed.id)
+    .execute(&state.pool)
+    .await?;
+
+    let rss_url = format!("{}/feed/{}/rss.xml", state.config.public_url, feed.feed_token);
+
+    Ok(Json(FeedResponse {
+        id: feed.id,
+        slug: new_slug,
+        title: new_title,
+        description: new_description,
+        feed_token: feed.feed_token,
+        tts_default: feed.tts_default,
+        rss_url,
+        created_at: feed.created_at,
     }))
 }
 

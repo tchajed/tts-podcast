@@ -86,6 +86,18 @@ export async function createFeed(
 	});
 }
 
+export async function updateFeed(
+	adminToken: string,
+	feedToken: string,
+	data: { slug?: string; title?: string; description?: string }
+): Promise<Feed> {
+	return apiFetch(`/api/v1/feeds/${feedToken}`, {
+		method: 'PATCH',
+		headers: adminHeaders(adminToken),
+		body: JSON.stringify(data),
+	});
+}
+
 export async function deleteFeed(adminToken: string, feedToken: string): Promise<void> {
 	await fetch(`${API_BASE}/api/v1/feeds/${feedToken}`, {
 		method: 'DELETE',

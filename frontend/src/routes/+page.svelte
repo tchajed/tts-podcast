@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { listFeeds, createFeed, deleteFeed, type Feed } from '$lib/api';
+	import { listFeeds, createFeed, deleteFeed, updateFeed, type Feed } from '$lib/api';
 
 	let adminToken = $state(localStorage.getItem('adminToken') ?? '');
 	let feeds = $state<Feed[]>([]);
@@ -42,6 +42,35 @@
 			await loadFeeds();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to create feed';
+		}
+	}
+
+	let editingToken = $state<string | null>(null);
+	let editSlug = $state('');
+	let editTitle = $state('');
+	let editDescription = $state('');
+
+	function startEdit(feed: Feed) {
+		if (!feed.feed_token) return;
+		editingToken = feed.feed_token;
+		editSlug = feed.slug;
+		editTitle = feed.title;
+		editDescription = feed.description;
+	}
+
+	async function handleEditSave() {
+		if (!editingToken) return;
+		try {
+			error = '';
+			await updateFeed(adminToken, editingToken, {
+				slug: editSlug,
+				title: editTitle,
+				description: editDescription,
+			});
+			editingToken = null;
+			await loadFeeds();
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to update feed';
 		}
 	}
 
@@ -107,25 +136,49 @@
 
 		{#each feeds as feed}
 			<div class="card">
-				<div class="flex-between">
-					<div>
-						<a href="/feeds/{feed.feed_token}"><strong>{feed.title}</strong></a>
-						<span class="muted">({feed.slug})</span>
+				{#if editingToken === feed.feed_token}
+					<form onsubmit={(e) => { e.preventDefault(); handleEditSave(); }}>
+						<div class="mb-1">
+							<label>Slug</label>
+							<input bind:value={editSlug} required />
+						</div>
+						<div class="mb-1">
+							<label>Title</label>
+							<input bind:value={editTitle} required />
+						</div>
+						<div class="mb-1">
+							<label>Description</label>
+							<input bind:value={editDescription} />
+						</div>
+						<div class="flex">
+							<button type="submit" class="primary">Save</button>
+							<button type="button" onclick={() => (editingToken = null)}>Cancel</button>
+						</div>
+					</form>
+				{:else}
+					<div class="flex-between">
+						<div>
+							<a href="/feeds/{feed.feed_token}"><strong>{feed.title}</strong></a>
+							<span class="muted">({feed.slug})</span>
+						</div>
+						<div class="flex">
+							<button onclick={() => startEdit(feed)}>Edit</button>
+							<button class="danger" onclick={() => feed.feed_token && handleDelete(feed.feed_token)}>Delete</button>
+						</div>
 					</div>
-					<button class="danger" onclick={() => feed.feed_token && handleDelete(feed.feed_token)}>Delete</button>
-				</div>
-				{#if feed.description}
-					<p class="muted">{feed.description}</p>
-				{/if}
-				<div class="flex mt-2 muted" style="font-size: 0.8rem;">
-					<span>{feed.episode_count ?? 0} episodes</span>
-					{#if feed.rss_url}
-						<span>&middot;</span>
-						<button class="copy-btn" onclick={() => feed.rss_url && copyToClipboard(feed.rss_url)}>
-							Copy RSS URL
-						</button>
+					{#if feed.description}
+						<p class="muted">{feed.description}</p>
 					{/if}
-				</div>
+					<div class="flex mt-2 muted" style="font-size: 0.8rem;">
+						<span>{feed.episode_count ?? 0} episodes</span>
+						{#if feed.rss_url}
+							<span>&middot;</span>
+							<button class="copy-btn" onclick={() => feed.rss_url && copyToClipboard(feed.rss_url)}>
+								Copy RSS URL
+							</button>
+						{/if}
+					</div>
+				{/if}
 			</div>
 		{:else}
 			<p class="muted">No feeds yet. Create one to get started.</p>
