@@ -20,17 +20,19 @@ pub async fn run(
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("No text extracted from PDF"))?;
 
-    // Update title only if still "PDF Upload"
-    let current_title =
-        sqlx::query_scalar::<_, String>("SELECT title FROM episodes WHERE id = $1")
+    // For manual PDF uploads, preserve the user-provided title unless it's
+    // still the default "PDF Upload". For arxiv fallback path, always replace
+    // the arXiv:NNNN placeholder with the extracted title.
+    let (current_title, source_type) =
+        sqlx::query_as::<_, (String, String)>("SELECT title, source_type FROM episodes WHERE id = $1")
             .bind(episode_id)
             .fetch_one(pool)
             .await?;
 
-    let final_title = if current_title == "PDF Upload" {
-        title
-    } else {
+    let final_title = if source_type == "pdf" && current_title != "PDF Upload" {
         &current_title
+    } else {
+        title
     };
 
     sqlx::query("UPDATE episodes SET title = $1, raw_text = $2 WHERE id = $3")
