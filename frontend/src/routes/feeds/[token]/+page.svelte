@@ -127,18 +127,25 @@
 
 	<!-- Feed info -->
 	<div class="card mb-2 feed-info">
-		<h2 style="margin-bottom: 0.5rem;">{feed.title}</h2>
-		{#if feed.description}
-			<p class="muted mb-1">{feed.description}</p>
-		{/if}
-		<p style="font-size: 0.875rem; margin-bottom: 0.75rem;">
-			This feed converts articles and papers to audio using text-to-speech.
-			Copy the RSS URL below and add it as a custom feed in your podcast app
-			(e.g., in Overcast: Library &rarr; <Search size={14} style="display:inline; vertical-align:middle;" /> &rarr; Add URL).
-		</p>
-		<button class="primary flex" style="display: inline-flex;" onclick={() => feed && copyToClipboard(feed.rss_url)}>
-			<Rss size={16} /> Copy RSS URL
-		</button>
+		<div class="feed-info-header">
+			{#if feed.image_url}
+				<img src={feed.image_url} alt="" class="feed-cover" />
+			{/if}
+			<div class="feed-info-body">
+				<h2 style="margin-bottom: 0.5rem;">{feed.title}</h2>
+				{#if feed.description}
+					<p class="muted mb-1">{feed.description}</p>
+				{/if}
+				<p style="font-size: 0.875rem; margin-bottom: 0.75rem;">
+					This feed converts articles and papers to audio using text-to-speech.
+					Copy the RSS URL below and add it as a custom feed in your podcast app
+					(e.g., in Overcast: Library &rarr; <Search size={14} style="display:inline; vertical-align:middle;" /> &rarr; Add URL).
+				</p>
+				<button class="primary flex" style="display: inline-flex;" onclick={() => feed && copyToClipboard(feed.rss_url)}>
+					<Rss size={16} /> Copy RSS URL
+				</button>
+			</div>
+		</div>
 	</div>
 
 	<!-- Unified submission form -->
@@ -284,6 +291,25 @@
 <style>
 	.feed-info h2 {
 		margin-bottom: 0.25rem;
+	}
+
+	.feed-info-header {
+		display: flex;
+		gap: 1rem;
+		align-items: flex-start;
+	}
+
+	.feed-cover {
+		width: 120px;
+		height: 120px;
+		border-radius: 8px;
+		object-fit: cover;
+		flex-shrink: 0;
+	}
+
+	.feed-info-body {
+		flex: 1;
+		min-width: 0;
 	}
 
 	.form-heading {
