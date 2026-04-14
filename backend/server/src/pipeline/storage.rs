@@ -58,7 +58,7 @@ impl StorageClient {
             .await?;
 
         Ok(format!(
-            "https://{}.t3.storage.dev/{}",
+            "https://{}.t3.tigrisfiles.io/{}",
             self.bucket, key
         ))
     }
@@ -82,21 +82,20 @@ impl StorageClient {
             .await?;
 
         Ok(format!(
-            "https://{}.t3.storage.dev/{}",
+            "https://{}.t3.tigrisfiles.io/{}",
             self.bucket, key
         ))
     }
 
     pub async fn delete_object(&self, url: &str) -> Result<()> {
-        let key = url
-            .strip_prefix(&format!("https://{}.t3.storage.dev/", self.bucket))
-            .or_else(|| {
-                url.strip_prefix(&format!(
-                    "https://{}.fly.storage.tigris.dev/",
-                    self.bucket
-                ))
-            })
-            .unwrap_or(url);
+        let key = [
+            format!("https://{}.t3.tigrisfiles.io/", self.bucket),
+            format!("https://{}.t3.storage.dev/", self.bucket),
+            format!("https://{}.fly.storage.tigris.dev/", self.bucket),
+        ]
+        .iter()
+        .find_map(|p| url.strip_prefix(p.as_str()))
+        .unwrap_or(url);
         self.client
             .delete_object()
             .bucket(&self.bucket)
