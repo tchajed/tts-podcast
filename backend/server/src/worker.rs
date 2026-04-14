@@ -241,6 +241,16 @@ async fn complete_job(pool: &SqlitePool, job: &Job, config: &AppConfig) -> Resul
     Ok(())
 }
 
+/// Detects upstream model provider outages (503 / overloaded) that we want
+/// to wait out rather than burn retry attempts on.
+fn is_upstream_outage(error_msg: &str) -> bool {
+    let s = error_msg.to_ascii_lowercase();
+    s.contains("503")
+        || s.contains("service unavailable")
+        || s.contains("overloaded")
+        || s.contains("unavailable")
+}
+
 async fn fail_job(
     pool: &SqlitePool,
     job: &Job,
@@ -248,6 +258,24 @@ async fn fail_job(
     max_attempts: i32,
     is_image: bool,
 ) -> Result<()> {
+    // For upstream provider outages, defer 30min without consuming an attempt.
+    if is_upstream_outage(error_msg) {
+        sqlx::query(
+            "UPDATE jobs SET status = 'queued',
+             run_after = datetime('now', '+1800 seconds')
+             WHERE id = $1",
+        )
+        .bind(&job.id)
+        .execute(pool)
+        .await?;
+        tracing::warn!(
+            "Job {} hit upstream outage, deferring 30min (attempt {} unchanged): {error_msg}",
+            job.id,
+            job.attempts,
+        );
+        return Ok(());
+    }
+
     let new_attempts = job.attempts + 1;
     let mut tx = pool.begin().await?;
 
