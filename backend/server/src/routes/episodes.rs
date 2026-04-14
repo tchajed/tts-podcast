@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Multipart, Path, State},
+    extract::{DefaultBodyLimit, Multipart, Path, State},
     http::StatusCode,
     routing::{get, post},
     Json, Router,
@@ -18,7 +18,7 @@ pub fn router() -> Router<AppState> {
         )
         .route(
             "/api/v1/feeds/{feed_token}/episodes/pdf",
-            post(upload_pdf),
+            post(upload_pdf).layer(DefaultBodyLimit::max(50 * 1024 * 1024)),
         )
         .route(
             "/api/v1/feeds/{feed_token}/episodes/{episode_id}",
