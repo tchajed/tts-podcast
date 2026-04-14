@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use crate::config::AppConfig;
 
@@ -14,6 +14,7 @@ pub async fn run(
     .fetch_one(pool)
     .await?;
 
+    tracing::info!("Describe start: episode={episode_id}");
     let doc = tts_lib::Document {
         transcript,
         cleaned_text,
@@ -21,7 +22,9 @@ pub async fn run(
     };
 
     let provider = config.make_provider();
-    let description = tts_lib::describe::describe(&doc, &provider).await?;
+    let description = tts_lib::describe::describe(&doc, &provider)
+        .await
+        .with_context(|| format!("Describe failed for episode {episode_id}"))?;
 
     sqlx::query("UPDATE episodes SET description = $1 WHERE id = $2")
         .bind(&description)
@@ -29,6 +32,9 @@ pub async fn run(
         .execute(pool)
         .await?;
 
-    tracing::info!("Generated description for episode {episode_id}");
+    tracing::info!(
+        "Describe done: episode={episode_id} description_chars={}",
+        description.len()
+    );
     Ok(())
 }

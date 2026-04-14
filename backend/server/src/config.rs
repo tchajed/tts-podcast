@@ -16,6 +16,7 @@ pub struct AppConfig {
     pub host: String,
     pub port: u16,
     pub worker_poll_interval: u64,
+    pub worker_count: usize,
     pub max_job_attempts: i32,
     pub public_url: String,
     pub generate_images: bool,
@@ -64,6 +65,10 @@ impl AppConfig {
                 .unwrap_or_else(|_| "5".into())
                 .parse()
                 .expect("WORKER_POLL_INTERVAL_SECS must be a valid u64"),
+            worker_count: env::var("WORKER_COUNT")
+                .unwrap_or_else(|_| "2".into())
+                .parse()
+                .expect("WORKER_COUNT must be a valid usize"),
             max_job_attempts: env::var("MAX_JOB_ATTEMPTS")
                 .unwrap_or_else(|_| "3".into())
                 .parse()

@@ -13,15 +13,13 @@ struct Job {
     attempts: i32,
 }
 
-pub async fn run_worker(pool: SqlitePool, config: AppConfig, storage: StorageClient) {
-    // GC stale per-chunk PDF extraction caches left behind by permanently
-    // failed or abandoned jobs. Chunk dirs are only removed on full-extraction
-    // success, so cruft accumulates without this sweep.
+/// One-shot startup tasks: GC stale chunk caches and recover jobs that were
+/// mid-flight when the VM died. Must run before any worker starts polling.
+pub async fn run_startup_recovery(pool: &SqlitePool) {
     tts_lib::pdf_gemini::gc_chunk_dirs("/data", Duration::from_secs(24 * 60 * 60)).await;
 
-    // Recover jobs stuck in 'running' from a previous VM that died mid-job
     match sqlx::query("UPDATE jobs SET status = 'queued' WHERE status = 'running'")
-        .execute(&pool)
+        .execute(pool)
         .await
     {
         Ok(res) if res.rows_affected() > 0 => {
@@ -30,18 +28,20 @@ pub async fn run_worker(pool: SqlitePool, config: AppConfig, storage: StorageCli
         Ok(_) => {}
         Err(e) => tracing::error!("Failed to recover orphaned jobs: {e}"),
     }
+}
 
+pub async fn run_worker(id: usize, pool: SqlitePool, config: AppConfig, storage: StorageClient) {
+    tracing::info!("Worker {id} started");
     loop {
         match claim_next_job(&pool).await {
             Ok(Some(job)) => {
-                // Run inline — SQLite WAL handles concurrent reads from web server
-                execute_job(job, &pool, &config, &storage).await;
+                execute_job(id, job, &pool, &config, &storage).await;
             }
             Ok(None) => {
                 tokio::time::sleep(Duration::from_secs(config.worker_poll_interval)).await;
             }
             Err(e) => {
-                tracing::error!("Worker poll error: {e}");
+                tracing::error!("Worker {id} poll error: {e}");
                 tokio::time::sleep(Duration::from_secs(5)).await;
             }
         }
@@ -49,32 +49,43 @@ pub async fn run_worker(pool: SqlitePool, config: AppConfig, storage: StorageCli
 }
 
 async fn claim_next_job(pool: &SqlitePool) -> Result<Option<Job>> {
-    let mut tx = pool.begin().await?;
-
+    // Atomic claim: a single UPDATE acquires SQLite's write lock, so concurrent
+    // workers can't grab the same job. RETURNING gives us the claimed row.
+    //
+    // Scheduling: shortest-remaining-stages-first. Jobs closer to finishing the
+    // episode run first so in-progress episodes complete before new submissions
+    // steal resources. Within a priority tier, oldest run_after wins.
     let job = sqlx::query_as::<_, Job>(
-        "SELECT id, episode_id, job_type, attempts
-         FROM jobs
-         WHERE status = 'queued' AND run_after <= datetime('now')
-         ORDER BY created_at ASC
-         LIMIT 1",
+        "UPDATE jobs SET status = 'running'
+         WHERE id = (
+             SELECT id FROM jobs
+             WHERE status = 'queued' AND run_after <= datetime('now')
+             ORDER BY
+                 CASE job_type
+                     WHEN 'describe'  THEN 0
+                     WHEN 'image'     THEN 0
+                     WHEN 'tts'       THEN 1
+                     WHEN 'summarize' THEN 2
+                     WHEN 'clean'     THEN 3
+                     WHEN 'scrape'    THEN 4
+                     WHEN 'pdf'       THEN 4
+                     ELSE 5
+                 END ASC,
+                 run_after ASC,
+                 created_at ASC
+             LIMIT 1
+         )
+         RETURNING id, episode_id, job_type, attempts",
     )
-    .fetch_optional(&mut *tx)
+    .fetch_optional(pool)
     .await?;
 
-    if let Some(ref job) = job {
-        sqlx::query("UPDATE jobs SET status = 'running' WHERE id = $1")
-            .bind(&job.id)
-            .execute(&mut *tx)
-            .await?;
-    }
-
-    tx.commit().await?;
     Ok(job)
 }
 
-async fn execute_job(job: Job, pool: &SqlitePool, config: &AppConfig, storage: &StorageClient) {
+async fn execute_job(worker_id: usize, job: Job, pool: &SqlitePool, config: &AppConfig, storage: &StorageClient) {
     tracing::info!(
-        "Executing job {} (type={}, episode={}, attempt={})",
+        "Worker {worker_id} executing job {} (type={}, episode={}, attempt={})",
         job.id,
         job.job_type,
         job.episode_id,

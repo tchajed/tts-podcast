@@ -15,6 +15,10 @@ pub async fn run(
     .await?;
 
     let raw_text = raw_text.context("No raw_text available for cleaning")?;
+    tracing::info!(
+        "Clean start: episode={episode_id} source_type={source_type} raw_chars={}",
+        raw_text.len()
+    );
 
     let input_doc = tts_lib::Document {
         raw_text: Some(raw_text),
@@ -23,7 +27,9 @@ pub async fn run(
     };
 
     let provider = config.make_provider();
-    let doc = tts_lib::clean::clean(&input_doc, &provider).await?;
+    let doc = tts_lib::clean::clean(&input_doc, &provider)
+        .await
+        .with_context(|| format!("Clean failed for episode {episode_id}"))?;
 
     let cleaned_text = doc
         .cleaned_text
@@ -37,5 +43,9 @@ pub async fn run(
         .execute(pool)
         .await?;
 
+    tracing::info!(
+        "Clean done: episode={episode_id} cleaned_chars={} word_count={word_count}",
+        cleaned_text.len()
+    );
     Ok(())
 }

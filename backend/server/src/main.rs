@@ -51,9 +51,18 @@ async fn main() {
         storage: storage.clone(),
     };
 
-    // Start background worker (runs inline, one job at a time)
-    tokio::spawn(worker::run_worker(pool, config.clone(), storage));
-    tracing::info!("Background worker started");
+    // Start background workers. Each worker processes one job at a time;
+    // multiple workers run concurrently and claim jobs atomically.
+    worker::run_startup_recovery(&pool).await;
+    for i in 0..config.worker_count {
+        tokio::spawn(worker::run_worker(
+            i,
+            pool.clone(),
+            config.clone(),
+            storage.clone(),
+        ));
+    }
+    tracing::info!("Started {} background workers", config.worker_count);
 
     let cors = CorsLayer::new()
         .allow_origin(Any)

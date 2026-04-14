@@ -15,6 +15,10 @@ pub async fn run(
     .await?;
 
     let cleaned_text = cleaned_text.context("No cleaned_text available for summarization")?;
+    tracing::info!(
+        "Summarize start: episode={episode_id} cleaned_chars={}",
+        cleaned_text.len()
+    );
 
     let input_doc = tts_lib::Document {
         cleaned_text: Some(cleaned_text),
@@ -22,7 +26,9 @@ pub async fn run(
     };
 
     let provider = config.make_provider();
-    let doc = tts_lib::summarize::summarize(&input_doc, &provider).await?;
+    let doc = tts_lib::summarize::summarize(&input_doc, &provider)
+        .await
+        .with_context(|| format!("Summarize failed for episode {episode_id}"))?;
 
     let transcript = doc
         .transcript
@@ -36,5 +42,9 @@ pub async fn run(
         .execute(pool)
         .await?;
 
+    tracing::info!(
+        "Summarize done: episode={episode_id} transcript_chars={} word_count={word_count}",
+        transcript.len()
+    );
     Ok(())
 }

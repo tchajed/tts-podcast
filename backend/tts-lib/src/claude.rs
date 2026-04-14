@@ -1,5 +1,10 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::time::{Duration, Instant};
+
+/// Upper bound on a single Claude API call. Prevents a hung connection from
+/// blocking a worker indefinitely; the job layer will then retry with backoff.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(600);
 
 /// Shared Claude API types and helpers used across pipeline stages.
 
@@ -84,24 +89,45 @@ pub async fn chat(
         }],
     };
 
+    let input_chars = user_message.len();
+    tracing::info!(
+        "Claude chat start: model={model} input_chars={input_chars} max_tokens={max_tokens}"
+    );
+    let started = Instant::now();
+
     let resp = client
         .post("https://api.anthropic.com/v1/messages")
         .header("x-api-key", api_key)
         .header("anthropic-version", "2023-06-01")
         .header("content-type", "application/json")
+        .timeout(REQUEST_TIMEOUT)
         .json(&request)
         .send()
-        .await?;
+        .await
+        .with_context(|| format!("Claude request failed (model={model}, input_chars={input_chars}, elapsed={:?})", started.elapsed()))?;
 
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
+        tracing::error!(
+            "Claude API error: model={model} status={status} elapsed={:?} body={body}",
+            started.elapsed()
+        );
         anyhow::bail!("Claude API failed ({status}): {body}");
     }
 
-    let claude_resp: Response = resp.json().await?;
-    claude_resp
+    let claude_resp: Response = resp
+        .json()
+        .await
+        .context("Claude response JSON parse failed")?;
+    let text = claude_resp
         .text()
         .map(|s| s.to_string())
-        .context("Empty response from Claude")
+        .context("Empty response from Claude")?;
+    tracing::info!(
+        "Claude chat done: model={model} input_chars={input_chars} output_chars={} elapsed={:?}",
+        text.len(),
+        started.elapsed()
+    );
+    Ok(text)
 }
