@@ -9,6 +9,7 @@
 		type FeedWithEpisodes,
 		type Episode,
 	} from '$lib/api';
+	import { Search } from 'lucide-svelte';
 
 	let feed = $state<FeedWithEpisodes | null>(null);
 	let error = $state('');
@@ -128,7 +129,7 @@
 		<p style="font-size: 0.875rem; margin-bottom: 0.75rem;">
 			This feed converts articles and papers to audio using text-to-speech.
 			Copy the RSS URL below and add it as a custom feed in your podcast app
-			(e.g., in Overcast: Library &rarr; Add URL).
+			(e.g., in Overcast: Library &rarr; <Search size={14} style="display:inline; vertical-align:middle;" /> &rarr; Add URL).
 		</p>
 		<button class="primary" onclick={() => feed && copyToClipboard(feed.rss_url)}>
 			Copy RSS URL
