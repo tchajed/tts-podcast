@@ -63,6 +63,10 @@ async fn rss_feed(
     .await?;
 
     let feed_link = format!(
+        "{}/feeds/{}",
+        state.config.public_url, feed.feed_token
+    );
+    let rss_link = format!(
         "{}/feed/{}/rss.xml",
         state.config.public_url, feed.feed_token
     );
@@ -77,10 +81,16 @@ async fn rss_feed(
         let duration = ep.duration_secs.unwrap_or(0);
         let audio_url = ep.audio_url.as_deref().unwrap_or("");
         let length = ep.audio_bytes.unwrap_or(0);
-        let description = ep
+        let base_description = ep
             .description
             .as_deref()
             .unwrap_or_else(|| ep.source_url.as_deref().unwrap_or("PDF upload"));
+        let description = match ep.source_url.as_deref() {
+            Some(url) if !base_description.contains(url) => {
+                format!("{base_description}\n\nSource: {url}")
+            }
+            _ => base_description.to_string(),
+        };
 
         let image_tag = if let Some(ref img_url) = ep.image_url {
             format!(
@@ -104,7 +114,7 @@ async fn rss_feed(
             title = xml_escape(&ep.title),
             id = ep.id,
             pub_date = pub_date,
-            description = xml_escape(description),
+            description = xml_escape(&description),
             audio_url = xml_escape(audio_url),
             length = length,
             duration = duration,
@@ -132,7 +142,7 @@ async fn rss_feed(
     <title>{title}</title>
     <description>{description}</description>
     <link>{link}</link>
-    <atom:link href="{link}" rel="self" type="application/rss+xml"/>
+    <atom:link href="{rss_link}" rel="self" type="application/rss+xml"/>
     <language>en-us</language>
     <itunes:author>Personal Podcast</itunes:author>
     <itunes:category text="Technology"/>
@@ -142,6 +152,7 @@ async fn rss_feed(
         title = xml_escape(&feed.title),
         description = xml_escape(&feed.description),
         link = xml_escape(&feed_link),
+        rss_link = xml_escape(&rss_link),
         channel_image_tag = channel_image_tag,
         items = items,
     );
