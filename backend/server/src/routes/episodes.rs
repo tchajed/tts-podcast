@@ -449,6 +449,7 @@ async fn get_episode(
                 (SELECT j.run_after FROM jobs j
                  WHERE j.episode_id = e.id AND j.status = 'queued'
                        AND j.run_after > datetime('now')
+                       AND j.job_type NOT IN ('image', 'describe')
                  ORDER BY j.run_after ASC LIMIT 1) AS retry_at
          FROM episodes e WHERE e.id = $1 AND e.feed_id = $2",
     )

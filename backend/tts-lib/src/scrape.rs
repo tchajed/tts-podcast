@@ -40,10 +40,54 @@ fn extract_readable(html: &str, url_str: &str) -> Result<(String, String)> {
     Ok((title, product.text))
 }
 
-async fn scrape_article(client: &Client, url: &str) -> Result<(String, String)> {
+async fn scrape_article(_client: &Client, url: &str) -> Result<(String, String)> {
+    match fetch_article(url).await? {
+        ArticleFetch::Html { title, text } => Ok((title, text)),
+        ArticleFetch::Pdf(_) => {
+            anyhow::bail!("URL returned a PDF, not HTML: {url}")
+        }
+    }
+}
+
+/// Result of fetching a URL that was expected to be an article — either
+/// readable HTML or a PDF body that the caller should run through PDF
+/// extraction. Some sites (e.g. journals) serve PDFs from URLs that look like
+/// regular article pages, so we detect by Content-Type rather than relying on
+/// the URL extension.
+pub enum ArticleFetch {
+    Html { title: String, text: String },
+    Pdf(Vec<u8>),
+}
+
+pub async fn fetch_article(url: &str) -> Result<ArticleFetch> {
+    let client = Client::builder()
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .timeout(std::time::Duration::from_secs(60))
+        .build()?;
+
     let resp = client.get(url).send().await?.error_for_status()?;
+
+    let is_pdf = url_looks_like_pdf(resp.url().as_str())
+        || resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(|ct| ct.trim().to_ascii_lowercase().starts_with("application/pdf"))
+            .unwrap_or(false);
+
+    if is_pdf {
+        let bytes = resp.bytes().await?.to_vec();
+        return Ok(ArticleFetch::Pdf(bytes));
+    }
+
     let html = resp.text().await?;
-    extract_readable(&html, url)
+    let (title, text) = extract_readable(&html, url)?;
+    Ok(ArticleFetch::Html { title, text })
+}
+
+pub fn url_looks_like_pdf(url: &str) -> bool {
+    let path = url.split(['?', '#']).next().unwrap_or(url);
+    path.to_ascii_lowercase().ends_with(".pdf")
 }
 
 async fn scrape_arxiv(client: &Client, url: &str) -> Result<(String, String)> {
