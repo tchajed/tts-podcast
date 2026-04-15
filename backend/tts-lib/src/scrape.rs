@@ -93,30 +93,218 @@ pub fn url_looks_like_pdf(url: &str) -> bool {
 async fn scrape_arxiv(client: &Client, url: &str) -> Result<(String, String)> {
     let arxiv_id = extract_arxiv_id(url).context("Could not extract arXiv ID from URL")?;
 
-    let api_url = format!("https://export.arxiv.org/api/query?id_list={arxiv_id}");
-    let api_resp = client.get(&api_url).send().await?.error_for_status()?;
-    let api_xml = api_resp.text().await?;
+    // Fetch the LaTeXML-rendered HTML. Prefer arxiv.org/html (canonical) and
+    // fall back to ar5iv.org if arxiv hasn't rendered or returns an error —
+    // very old papers don't have a LaTeXML build on arxiv.org yet.
+    let (html, fetch_url) = fetch_arxiv_html(client, &arxiv_id).await?;
 
-    let title = parse_arxiv_title(&api_xml).unwrap_or_else(|| format!("arXiv:{arxiv_id}"));
-
-    let ar5iv_url = format!("https://ar5iv.org/abs/{arxiv_id}");
-    let html_resp = client.get(&ar5iv_url).send().await?.error_for_status()?;
-    let html = html_resp.text().await?;
-
-    if html.contains("Conversion to HTML had a Fatal error") {
-        anyhow::bail!("ar5iv conversion failed for {arxiv_id}");
-    }
-
-    let (_extracted_title, text) = extract_readable(&html, &ar5iv_url)?;
+    // Both sources emit `<article class="ltx_document">` with the full paper.
+    // readability's content-density heuristic discards the main body on many
+    // LaTeXML papers (it scores the longest continuous block — often the
+    // appendix — highest), so walk the LaTeXML tree directly.
+    let (title, text) = extract_latexml(&html)
+        .unwrap_or_else(|| extract_readable(&html, &fetch_url).unwrap_or_default());
 
     if text.trim().len() < 500 {
         anyhow::bail!(
-            "ar5iv returned suspiciously short content ({} chars) for {arxiv_id}",
+            "{fetch_url} returned suspiciously short content ({} chars) for {arxiv_id}",
             text.trim().len()
         );
     }
 
+    // Prefer the arXiv API title if available — it's cleaner than the HTML one.
+    let title = match fetch_arxiv_title(client, &arxiv_id).await {
+        Ok(Some(t)) => t,
+        _ => {
+            if title.is_empty() {
+                format!("arXiv:{arxiv_id}")
+            } else {
+                title
+            }
+        }
+    };
+
     Ok((title, text))
+}
+
+async fn fetch_arxiv_html(client: &Client, arxiv_id: &str) -> Result<(String, String)> {
+    let arxiv_url = format!("https://arxiv.org/html/{arxiv_id}");
+    match client.get(&arxiv_url).send().await {
+        Ok(resp) if resp.status().is_success() => {
+            let html = resp.text().await?;
+            if !html.contains("Conversion to HTML had a Fatal error") {
+                return Ok((html, arxiv_url));
+            }
+            tracing::info!("arxiv.org/html failed for {arxiv_id}, falling back to ar5iv");
+        }
+        Ok(resp) => {
+            tracing::info!("arxiv.org/html returned {} for {arxiv_id}, falling back to ar5iv", resp.status());
+        }
+        Err(e) => {
+            tracing::info!("arxiv.org/html request failed for {arxiv_id}: {e}, falling back to ar5iv");
+        }
+    }
+
+    let ar5iv_url = format!("https://ar5iv.org/abs/{arxiv_id}");
+    let html_resp = client.get(&ar5iv_url).send().await?.error_for_status()?;
+    let html = html_resp.text().await?;
+    if html.contains("Conversion to HTML had a Fatal error") {
+        anyhow::bail!("ar5iv conversion failed for {arxiv_id}");
+    }
+    Ok((html, ar5iv_url))
+}
+
+async fn fetch_arxiv_title(client: &Client, arxiv_id: &str) -> Result<Option<String>> {
+    let api_url = format!("https://export.arxiv.org/api/query?id_list={arxiv_id}");
+    let resp = client.get(&api_url).send().await?;
+    if !resp.status().is_success() {
+        return Ok(None);
+    }
+    let xml = resp.text().await?;
+    Ok(parse_arxiv_title(&xml))
+}
+
+/// Extract title + text from LaTeXML-generated HTML (arxiv.org/html, ar5iv).
+/// Returns None if the document doesn't look like LaTeXML output.
+fn extract_latexml(html: &str) -> Option<(String, String)> {
+    let doc = scraper::Html::parse_document(html);
+    let article_sel = scraper::Selector::parse("article.ltx_document").ok()?;
+    let article = doc.select(&article_sel).next()?;
+
+    let title_sel = scraper::Selector::parse("h1.ltx_title_document").ok()?;
+    let title = doc
+        .select(&title_sel)
+        .next()
+        .map(|e| normalize_whitespace(&collect_text(&e)))
+        .unwrap_or_default();
+
+    let mut out = String::new();
+    render_latexml_node(*article, &mut out);
+    let text = collapse_blank_lines(&out);
+    Some((title, text))
+}
+
+fn collect_text(el: &scraper::ElementRef) -> String {
+    el.text().collect::<String>()
+}
+
+fn normalize_whitespace(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn collapse_blank_lines(s: &str) -> String {
+    let mut out = String::new();
+    let mut blank_run = 0;
+    for line in s.lines() {
+        let trimmed = line.trim_end();
+        if trimmed.is_empty() {
+            blank_run += 1;
+            if blank_run <= 1 {
+                out.push('\n');
+            }
+        } else {
+            blank_run = 0;
+            out.push_str(trimmed);
+            out.push('\n');
+        }
+    }
+    out.trim().to_string()
+}
+
+/// Walk a LaTeXML subtree, appending text to `out`. Skips citations,
+/// bibliography, figures, and math (substituting `alttext` where present).
+/// Inserts blank lines between block elements so the cleaner sees paragraph
+/// structure.
+fn render_latexml_node(node: ego_tree::NodeRef<scraper::node::Node>, out: &mut String) {
+    use scraper::node::Node;
+
+    match node.value() {
+        Node::Text(t) => {
+            let s: &str = t;
+            // Collapse internal whitespace but don't trim — we rely on spacing
+            // between adjacent inline nodes.
+            for (i, token) in s.split_whitespace().enumerate() {
+                if i > 0 || s.starts_with(char::is_whitespace) {
+                    ensure_space(out);
+                }
+                out.push_str(token);
+            }
+            if s.ends_with(char::is_whitespace) {
+                ensure_space(out);
+            }
+        }
+        Node::Element(el) => {
+            let name = el.name();
+            let class = el.attr("class").unwrap_or("");
+
+            // Skip noise: bibliography, references, citations, figures, nav/footer.
+            if class.contains("ltx_bibliography")
+                || class.contains("ltx_biblist")
+                || class.contains("ltx_bibitem")
+                || class.contains("ltx_ERROR")
+                || class.contains("ltx_pagination")
+                || class.contains("ltx_authors")
+                || class.contains("ltx_dates")
+                || class.contains("ltx_classification")
+                || matches!(name, "cite" | "nav" | "footer" | "script" | "style" | "figure" | "table")
+            {
+                return;
+            }
+
+            // Math: prefer the `alttext` attribute (a TeX-free rendering).
+            if name == "math" {
+                if let Some(alt) = el.attr("alttext") {
+                    ensure_space(out);
+                    out.push_str(alt);
+                    ensure_space(out);
+                }
+                return;
+            }
+
+            let is_heading = matches!(name, "h1" | "h2" | "h3" | "h4" | "h5" | "h6");
+            let is_block = is_heading
+                || matches!(name, "p" | "section" | "article" | "div" | "li" | "blockquote")
+                || class.contains("ltx_para")
+                || class.contains("ltx_paragraph")
+                || class.contains("ltx_section")
+                || class.contains("ltx_subsection")
+                || class.contains("ltx_abstract");
+
+            if is_block {
+                ensure_blank_line(out);
+            }
+
+            for child in node.children() {
+                render_latexml_node(child, out);
+            }
+
+            if is_block {
+                ensure_blank_line(out);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn ensure_space(out: &mut String) {
+    if !out.is_empty() && !out.ends_with(char::is_whitespace) {
+        out.push(' ');
+    }
+}
+
+fn ensure_blank_line(out: &mut String) {
+    // Trim trailing spaces and ensure we end with exactly two newlines
+    // (one to end the current line, one blank separator) — but never leading.
+    if out.is_empty() {
+        return;
+    }
+    while out.ends_with(' ') {
+        out.pop();
+    }
+    let nl_count = out.chars().rev().take_while(|&c| c == '\n').count();
+    for _ in nl_count..2 {
+        out.push('\n');
+    }
 }
 
 pub fn extract_arxiv_id(url: &str) -> Option<String> {

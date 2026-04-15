@@ -13,6 +13,8 @@ tracing = { workspace = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
 readability = "0.3"
+scraper = "0.20"
+ego-tree = "0.6"
 url = "2"
 mp3-duration = "0.1"
 futures = "0.3"
