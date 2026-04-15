@@ -86,8 +86,7 @@ pub async fn synthesize(
     let word_count = text.split_whitespace().count();
     // Chunk metadata needed after the stream consumes `chunks`.
     let chunk_section_idxs: Vec<usize> = chunks.iter().map(|c| c.section_idx).collect();
-    let chunk_word_counts: Vec<usize> =
-        chunks.iter().map(|c| c.text.split_whitespace().count()).collect();
+    let chunk_append_pauses: Vec<bool> = chunks.iter().map(|c| c.append_pause).collect();
 
     tracing::info!(
         "TTS starting: {word_count} words, {total_chunks} chunks across {} sections (~{:.0}s estimated)",
@@ -102,7 +101,7 @@ pub async fn synthesize(
     let completed = Arc::new(AtomicUsize::new(0));
     let on_progress = on_progress.clone();
 
-    let results: Vec<Result<(usize, Bytes)>> = stream::iter(chunks.into_iter().enumerate())
+    let results: Vec<Result<(usize, Bytes, f64)>> = stream::iter(chunks.into_iter().enumerate())
         .map(|(i, chunk)| {
             let client = client.clone();
             let completed = completed.clone();
@@ -110,40 +109,48 @@ pub async fn synthesize(
             async move {
                 let chunk_words = chunk.text.split_whitespace().count();
                 tracing::info!("TTS chunk {}/{} ({chunk_words} words)", i + 1, total_chunks);
-                let mut audio = tts_google(&client, config, &chunk.text).await?;
-                if chunk.append_pause {
-                    // Append a 1.5s silent MP3 segment so the chunk's measured
-                    // duration (and the running audio offset) includes the pause.
+                let audio = tts_google(&client, config, &chunk.text).await?;
+                // Measure duration of the Google-returned MP3 before appending
+                // any silence. mp3_duration can't walk past the ID3 tag at the
+                // start of the silence file, so measuring the concatenation
+                // returns a bogus ~1s duration — caller tracks pauses separately.
+                let base_duration = mp3_duration::from_read(&mut std::io::Cursor::new(&audio[..]))
+                    .map(|d| d.as_secs_f64())
+                    .unwrap_or_else(|_| chunk_words as f64 / 150.0 * 60.0);
+                let audio = if chunk.append_pause {
                     let mut combined =
                         Vec::with_capacity(audio.len() + SECTION_SILENCE_MP3.len());
                     combined.extend_from_slice(&audio);
                     combined.extend_from_slice(SECTION_SILENCE_MP3);
-                    audio = Bytes::from(combined);
-                }
+                    Bytes::from(combined)
+                } else {
+                    audio
+                };
                 let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
                 if let Some(ref cb) = on_progress {
                     cb(done, total_chunks);
                 }
-                Ok::<_, anyhow::Error>((i, audio))
+                Ok::<_, anyhow::Error>((i, audio, base_duration))
             }
         })
         .buffer_unordered(TTS_CONCURRENCY)
         .collect()
         .await;
 
-    let mut indexed: Vec<(usize, Bytes)> = results.into_iter().collect::<Result<_>>()?;
-    indexed.sort_by_key(|(i, _)| *i);
-    let audio_parts: Vec<Bytes> = indexed.into_iter().map(|(_, b)| b).collect();
+    let mut indexed: Vec<(usize, Bytes, f64)> = results.into_iter().collect::<Result<_>>()?;
+    indexed.sort_by_key(|(i, _, _)| *i);
+    let audio_parts: Vec<Bytes> = indexed.iter().map(|(_, b, _)| b.clone()).collect();
 
-    // Per-chunk durations; fall back to word-rate estimate if MP3 parsing fails
-    // for a chunk so section offsets remain approximately correct.
-    let per_chunk_durations: Vec<f64> = audio_parts
+    // Per-chunk durations include the 1.5s pause for section-end chunks.
+    const SECTION_PAUSE_SECS: f64 = 1.5;
+    let per_chunk_durations: Vec<f64> = indexed
         .iter()
-        .zip(chunk_word_counts.iter())
-        .map(|(bytes, &words)| {
-            mp3_duration::from_read(&mut std::io::Cursor::new(&bytes[..]))
-                .map(|d| d.as_secs_f64())
-                .unwrap_or_else(|_| words as f64 / 150.0 * 60.0)
+        .map(|(i, _, base)| {
+            if chunk_append_pauses[*i] {
+                base + SECTION_PAUSE_SECS
+            } else {
+                *base
+            }
         })
         .collect();
 
@@ -159,9 +166,11 @@ pub async fn synthesize(
     let total_bytes: Vec<u8> = audio_parts.iter().flat_map(|b| b.to_vec()).collect();
     let audio = Bytes::from(total_bytes);
 
-    let duration_secs = mp3_duration::from_read(&mut std::io::Cursor::new(&audio[..]))
-        .map(|d| d.as_secs() as u32)
-        .unwrap_or_else(|_| per_chunk_durations.iter().sum::<f64>() as u32);
+    // Sum per-chunk durations rather than re-parsing the concatenated MP3:
+    // the per-section silence MP3 carries an ID3 header that halts the frame
+    // walker mid-stream, so parsing the whole file returns a bogus short
+    // duration (~1s for Spanner-sized inputs).
+    let duration_secs = per_chunk_durations.iter().sum::<f64>() as u32;
 
     Ok(TtsResult {
         audio,

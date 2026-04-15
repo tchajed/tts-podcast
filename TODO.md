@@ -12,14 +12,13 @@
 - Add time remaining estimation. As each stage completes, we get more info
   for the later stages to make the estimate better (e.g., we need the
   content length to have any real estimate).
-- Fix the chapter timings. For Spanner these are definitely incorrect.
-  `parse_sections` now tolerates leading whitespace on `## ` headers and
-  logs the detected section count, but the root cause still needs a
-  concrete repro — check whether cleaned_text for Spanner has `## ` at all
-  and whether per-chunk durations are roughly uniform.
 
 ## Done
 
+- Fix chapter timings and total duration: `mp3_duration` halts at the ID3
+  tag inside the per-section silence MP3, so concatenated measurements
+  returned ~1s. Per-chunk duration is now measured on the raw TTS output
+  before appending silence, and the total is the sum of per-chunk durations.
 - Read-only admin interface: `GET /api/v1/admin/{status,jobs,usage}` gated
   by `ADMIN_TOKEN`. TTS chunk progress is exposed per-episode in the feed
   view and per-job in `/admin/jobs`.
