@@ -11,7 +11,7 @@
 		type Episode,
 	} from '$lib/api';
 	import Toast from '$lib/Toast.svelte';
-	import { ArrowLeft, Rss, Link, FileUp, Plus, FileText, ExternalLink, Play, Clock, AlertCircle, RotateCcw, X, Search } from 'lucide-svelte';
+	import { Rss, Link, FileUp, Plus, FileText, ExternalLink, Clock, AlertCircle, X, Info } from 'lucide-svelte';
 
 	let feed = $state<FeedWithEpisodes | null>(null);
 	let error = $state('');
@@ -113,10 +113,10 @@
 	}
 
 	function badgeClass(status: string): string {
-		if (status === 'done') return 'badge done';
-		if (status === 'error') return 'badge error';
-		if (status === 'pending') return 'badge pending';
-		return 'badge processing';
+		if (status === 'done') return 'badge badge-success';
+		if (status === 'error') return 'badge badge-error';
+		if (status === 'pending') return 'badge badge-ghost';
+		return 'badge badge-warning';
 	}
 
 	function handleFileInput(e: Event) {
@@ -126,273 +126,190 @@
 </script>
 
 {#if feed}
-	<p class="mb-2"><a href="/" class="flex" style="display: inline-flex; gap: 0.25rem;"><ArrowLeft size={16} /> All feeds</a></p>
+	<!-- Breadcrumbs -->
+	<div class="breadcrumbs text-sm mb-4">
+		<ul>
+			<li><a href="/">Home</a></li>
+			<li>{feed.title}</li>
+		</ul>
+	</div>
 
 	<!-- Feed info -->
-	<div class="card mb-2 feed-info">
-		<div class="feed-info-header">
-			{#if feed.image_url}
-				<img src={feed.image_url} alt="" class="feed-cover" />
+	<div class="flex gap-5 items-center mb-6">
+		{#if feed.image_url}
+			<img src={feed.image_url} alt="" class="w-24 h-24 rounded-xl object-cover shrink-0 shadow-md" />
+		{/if}
+		<div class="min-w-0 flex-1">
+			<h2 class="text-2xl font-bold">{feed.title}</h2>
+			{#if feed.description}
+				<p class="opacity-60 mt-0.5">{feed.description}</p>
 			{/if}
-			<div class="feed-info-body">
-				<h2 style="margin-bottom: 0.5rem;">{feed.title}</h2>
-				{#if feed.description}
-					<p class="muted mb-1">{feed.description}</p>
-				{/if}
-				<p style="font-size: 0.875rem; margin-bottom: 0.75rem;">
-					This feed converts articles, papers, and other written content to audio using text-to-speech.
-					Copy the RSS URL below and add it as a custom feed in your podcast app
-					(e.g., in Overcast: Library &rarr; <Search size={14} style="display:inline; vertical-align:middle;" /> &rarr; Add URL).
-				</p>
-				<button class="primary flex" style="display: inline-flex;" onclick={() => feed && copyToClipboard(feed.rss_url)}>
+			<div class="flex items-center gap-2 mt-2">
+				<button class="btn btn-primary btn-sm" onclick={() => feed && copyToClipboard(feed.rss_url)}>
 					<Rss size={16} /> Copy RSS URL
 				</button>
+				<div class="tooltip tooltip-right" data-tip="Copy the RSS URL and add it as a custom feed in your podcast app (e.g. in Overcast: Library → Search → Add URL).">
+					<button type="button" class="btn btn-ghost btn-circle btn-xs opacity-50">
+						<Info size={16} />
+					</button>
+				</div>
 			</div>
 		</div>
 	</div>
 
-	<!-- Unified submission form -->
-	<div class="card mb-2">
-		<form onsubmit={(e) => {
-			e.preventDefault();
-			if (pdfFile) {
-				handleUploadPdf();
-			} else {
-				handleSubmitUrl();
-			}
-		}}>
-			<h3 class="form-heading flex" style="gap: 0.375rem;"><Plus size={18} /> Add an episode</h3>
+	<!-- Submission form -->
+	<div class="card bg-base-100 shadow-sm border border-base-300 mb-4">
+		<div class="card-body p-4">
+			<form onsubmit={(e) => {
+				e.preventDefault();
+				if (pdfFile) {
+					handleUploadPdf();
+				} else {
+					handleSubmitUrl();
+				}
+			}}>
+				<h3 class="font-semibold mb-3 flex items-center gap-1.5"><Plus size={18} /> Add an episode</h3>
 
-			<div class="mb-1">
-				<div class="input-with-icon">
-					<Link size={16} class="input-icon" />
-					<input
-						bind:value={submitUrl}
-						placeholder="Paste a URL (e.g. https://arxiv.org/abs/2301.07041)"
-						disabled={submitting || uploadingPdf}
-						style="padding-left: 2.25rem;"
-					/>
+				<div class="mb-3">
+					<label class="input input-bordered flex items-center gap-2 w-full">
+						<Link size={16} class="opacity-50" />
+						<input
+							type="text"
+							class="grow"
+							bind:value={submitUrl}
+							placeholder="Paste a URL (e.g. https://arxiv.org/abs/2301.07041)"
+							disabled={submitting || uploadingPdf}
+						/>
+					</label>
 				</div>
-			</div>
 
-			<div class="mb-1">
-				<label class="file-drop" class:has-file={!!pdfFile}>
-					<input
-						type="file"
-						accept=".pdf,.md,.markdown,.txt"
-						onchange={handleFileInput}
-						disabled={submitting || uploadingPdf}
-						class="file-input-hidden"
-					/>
-					{#if pdfFile}
-						<FileText size={16} />
-						<span class="file-drop-text">{pdfFile.name}</span>
-						<button
-							type="button"
-							class="file-remove"
-							onclick={(e) => { e.preventDefault(); pdfFile = null; pdfTitle = ''; pdfSourceUrl = ''; }}
-						><X size={14} /></button>
-					{:else}
-						<FileUp size={16} style="color: var(--text-muted);" />
-						<span class="file-drop-text muted">Or choose a PDF or Markdown file</span>
-					{/if}
-				</label>
-			</div>
+				<div class="mb-3">
+					<label class="flex items-center gap-2 border border-dashed border-base-300 rounded-lg p-3 cursor-pointer hover:border-primary transition-colors" class:border-primary={!!pdfFile} class:border-solid={!!pdfFile}>
+						<input
+							type="file"
+							accept=".pdf,.md,.markdown,.txt"
+							onchange={handleFileInput}
+							disabled={submitting || uploadingPdf}
+							class="hidden"
+						/>
+						{#if pdfFile}
+							<FileText size={16} />
+							<span class="text-sm flex-1">{pdfFile.name}</span>
+							<button
+								type="button"
+								class="btn btn-ghost btn-xs"
+								onclick={(e) => { e.preventDefault(); pdfFile = null; pdfTitle = ''; pdfSourceUrl = ''; }}
+							><X size={14} /></button>
+						{:else}
+							<FileUp size={16} class="opacity-50" />
+							<span class="text-sm opacity-50">Or choose a PDF or Markdown file</span>
+						{/if}
+					</label>
+				</div>
 
-			{#if pdfFile}
-				<div class="mb-1">
-					<input bind:value={pdfTitle} placeholder="Title (optional)" disabled={uploadingPdf} />
-				</div>
-				<div class="mb-1">
-					<input bind:value={pdfSourceUrl} placeholder="Source URL (optional)" disabled={uploadingPdf} />
-				</div>
-			{/if}
+				{#if pdfFile}
+					<div class="mb-3">
+						<input class="input input-bordered w-full" bind:value={pdfTitle} placeholder="Title (optional)" disabled={uploadingPdf} />
+					</div>
+					<div class="mb-3">
+						<input class="input input-bordered w-full" bind:value={pdfSourceUrl} placeholder="Source URL (optional)" disabled={uploadingPdf} />
+					</div>
+				{/if}
 
-			<div class="flex-between">
-				<label class="checkbox-label">
-					<input type="checkbox" bind:checked={summarize} />
-					<span>Summarize</span>
-				</label>
-				<button
-					type="submit"
-					class="primary"
-					disabled={submitting || uploadingPdf || (!submitUrl.trim() && !pdfFile)}
-				>
-					{#if submitting || uploadingPdf}
-						Adding...
-					{:else}
-						<Plus size={16} /> Add
-					{/if}
-				</button>
-			</div>
-			{#if summarize}
-				<div class="mb-1" style="margin-top: 0.5rem;">
-					<input
-						bind:value={summarizeFocus}
-						placeholder="Focus (optional): e.g., focus only on GRPO"
-						disabled={submitting || uploadingPdf}
-					/>
+				<div class="flex justify-between items-center">
+					<label class="flex items-center gap-2 cursor-pointer text-sm font-medium">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={summarize} />
+						<span>Summarize</span>
+					</label>
+					<button
+						type="submit"
+						class="btn btn-primary btn-sm"
+						disabled={submitting || uploadingPdf || (!submitUrl.trim() && !pdfFile)}
+					>
+						{#if submitting || uploadingPdf}
+							<span class="loading loading-spinner loading-xs"></span> Adding...
+						{:else}
+							<Plus size={16} /> Add
+						{/if}
+					</button>
 				</div>
-			{/if}
-			<p class="muted" style="font-size: 0.75rem; margin-top: 0.25rem;">
-				Summarize condenses the text to ~20-30% before converting to speech.
-			</p>
-		</form>
+				{#if summarize}
+					<div class="mt-2">
+						<input
+							class="input input-bordered w-full"
+							bind:value={summarizeFocus}
+							placeholder="Focus (optional): e.g., focus only on GRPO"
+							disabled={submitting || uploadingPdf}
+						/>
+					</div>
+				{/if}
+				<p class="text-xs opacity-50 mt-1">
+					Summarize condenses the text to ~20-30% before converting to speech.
+				</p>
+			</form>
+		</div>
 	</div>
 
 	{#if error}
-		<div class="card mb-2" style="border-color: var(--danger); color: var(--danger);">{error}</div>
+		<div role="alert" class="alert alert-error mb-4">{error}</div>
 	{/if}
 
-	<h2>Episodes</h2>
+	<h2 class="text-xl font-semibold mb-3">Episodes</h2>
 
 	{#each feed.episodes as ep}
-		<div class="card">
-			<div class="flex-between mb-1">
-				<div class="flex">
-					{#if ep.image_url}
-						<img src={ep.image_url} alt="" style="width:40px; height:40px; border-radius:4px; object-fit:cover;" />
-					{/if}
-					<a href="/feeds/{token}/episodes/{ep.id}">
-						<strong>{episodeTitle(ep)}</strong>
-					</a>
+		<div class="card bg-base-100 shadow-sm border border-base-300 mb-3">
+			<div class="card-body p-4">
+				<div class="flex justify-between items-center flex-wrap gap-2 mb-1">
+					<div class="flex items-center gap-2">
+						{#if ep.image_url}
+							<img src={ep.image_url} alt="" class="w-10 h-10 rounded object-cover" />
+						{/if}
+						<a href="/feeds/{token}/episodes/{ep.id}" class="font-semibold link">
+							{episodeTitle(ep)}
+						</a>
+					</div>
+					<span class={badgeClass(ep.status)}>
+						{ep.status}{#if ep.tts_chunks_total > 0 && ep.status !== 'done' && ep.status !== 'error'}&nbsp;· {ep.tts_chunks_done}/{ep.tts_chunks_total}{/if}
+					</span>
 				</div>
-				<span class={badgeClass(ep.status)}>
-					{ep.status}{#if ep.tts_chunks_total > 0 && ep.status !== 'done' && ep.status !== 'error'}&nbsp;· {ep.tts_chunks_done}/{ep.tts_chunks_total}{/if}
-				</span>
-			</div>
-			<div class="muted flex" style="font-size: 0.8rem;">
-				{#if ep.source_url}
-					<ExternalLink size={14} />
-					<a href={ep.source_url} target="_blank" rel="noopener">{ep.source_url}</a>
-				{:else}
-					<FileUp size={14} /> PDF upload
+				<div class="flex items-center gap-1.5 text-xs opacity-60">
+					{#if ep.source_url}
+						<ExternalLink size={14} />
+						<a href={ep.source_url} target="_blank" rel="noopener" class="link truncate">{ep.source_url}</a>
+					{:else}
+						<FileUp size={14} /> PDF upload
+					{/if}
+				</div>
+				{#if ep.description}
+					<p class="text-sm mt-2">{ep.description}</p>
+				{/if}
+				{#if ep.retry_at}
+					<div class="flex items-center gap-1.5 text-xs text-warning mt-2">
+						<Clock size={14} /> Waiting on retry at {new Date(ep.retry_at + 'Z').toLocaleString()}
+					</div>
+				{/if}
+				{#if ep.status === 'error' && ep.error_msg}
+					<div class="flex items-center gap-1.5 text-sm text-error mt-2">
+						<AlertCircle size={14} /> {ep.error_msg}
+					</div>
+				{/if}
+				{#if ep.status === 'done' && ep.audio_url}
+					<div class="flex items-center gap-2 mt-2">
+						<audio controls src={ep.audio_url} preload="metadata" style="height: 32px;"></audio>
+						<span class="text-sm opacity-60">{formatDuration(ep.duration_secs)}</span>
+					</div>
 				{/if}
 			</div>
-			{#if ep.description}
-				<p style="font-size: 0.9rem; margin-top: 0.5rem;">{ep.description}</p>
-			{/if}
-			{#if ep.retry_at}
-				<div class="flex" style="font-size: 0.8rem; margin-top: 0.5rem; color: #92400e;">
-					<Clock size={14} /> Waiting on retry at {new Date(ep.retry_at + 'Z').toLocaleString()}
-				</div>
-			{/if}
-			{#if ep.status === 'error' && ep.error_msg}
-				<div class="flex" style="color: var(--danger); font-size: 0.85rem; margin-top: 0.5rem;">
-					<AlertCircle size={14} /> {ep.error_msg}
-				</div>
-			{/if}
-			{#if ep.status === 'done' && ep.audio_url}
-				<div class="mt-2 flex">
-					<audio controls src={ep.audio_url} preload="metadata" style="height: 32px;"></audio>
-					<span class="muted">{formatDuration(ep.duration_secs)}</span>
-				</div>
-			{/if}
 		</div>
 	{:else}
-		<p class="muted">No episodes yet. Submit a URL or upload a PDF above.</p>
+		<p class="opacity-60">No episodes yet. Submit a URL or upload a PDF above.</p>
 	{/each}
 {:else if error}
-	<div class="card" style="border-color: var(--danger); color: var(--danger);">{error}</div>
+	<div role="alert" class="alert alert-error">{error}</div>
 {:else}
-	<p class="muted">Loading...</p>
+	<p class="opacity-60">Loading...</p>
 {/if}
 
 {#if toastMessage}
 	<Toast message={toastMessage} onclose={() => toastMessage = ''} />
 {/if}
-
-<style>
-	.feed-info h2 {
-		margin-bottom: 0.25rem;
-	}
-
-	.feed-info-header {
-		display: flex;
-		gap: 1rem;
-		align-items: flex-start;
-	}
-
-	.feed-cover {
-		width: 120px;
-		height: 120px;
-		border-radius: 8px;
-		object-fit: cover;
-		flex-shrink: 0;
-	}
-
-	.feed-info-body {
-		flex: 1;
-		min-width: 0;
-	}
-
-	.form-heading {
-		font-size: 1rem;
-		font-weight: 600;
-		margin-bottom: 0.75rem;
-	}
-
-	.input-with-icon {
-		position: relative;
-	}
-
-	.input-with-icon :global(.input-icon) {
-		position: absolute;
-		left: 0.75rem;
-		top: 50%;
-		transform: translateY(-50%);
-		color: var(--text-muted);
-	}
-
-	.file-drop {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		border: 1.5px dashed var(--border);
-		border-radius: 6px;
-		padding: 0.625rem 0.75rem;
-		cursor: pointer;
-		transition: border-color 0.15s, background 0.15s;
-	}
-
-	.file-drop:hover {
-		border-color: var(--primary);
-		background: rgba(37, 99, 235, 0.03);
-	}
-
-	.file-drop.has-file {
-		border-style: solid;
-		border-color: var(--primary);
-		background: rgba(37, 99, 235, 0.04);
-	}
-
-	.file-input-hidden {
-		display: none;
-	}
-
-	.file-drop-text {
-		font-size: 0.875rem;
-	}
-
-	.file-remove {
-		background: none;
-		border: none;
-		color: var(--text-muted);
-		font-size: 1.1rem;
-		padding: 0 0.25rem;
-		line-height: 1;
-	}
-
-	.file-remove:hover {
-		color: var(--danger);
-	}
-
-	.checkbox-label {
-		display: flex;
-		align-items: center;
-		gap: 0.375rem;
-		cursor: pointer;
-		font-size: 0.875rem;
-		font-weight: 500;
-	}
-</style>

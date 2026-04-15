@@ -3,10 +3,10 @@
 	let { children } = $props();
 </script>
 
-<div class="container">
-	<header class="mb-2">
-		<a href="/" style="text-decoration: none; color: inherit;">
-			<h1>TTS Podcast</h1>
+<div class="max-w-3xl mx-auto p-4 sm:p-8">
+	<header class="mb-4">
+		<a href="/" class="text-xl font-bold no-underline text-base-content hover:no-underline">
+			Papercast
 		</a>
 	</header>
 	{@render children()}

@@ -4,7 +4,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { getEpisode, getEpisodeText, retryEpisode, deleteEpisode, updateEpisode, formatDuration, formatTimestamp, episodeTitle, type Episode, type Section } from '$lib/api';
 	import TextModal from '$lib/TextModal.svelte';
-	import { ArrowLeft, ExternalLink, FileUp, Clock, AlertCircle, RotateCcw, FileText, ScrollText, Trash2, Pencil } from 'lucide-svelte';
+	import { ExternalLink, FileUp, Clock, AlertCircle, RotateCcw, FileText, ScrollText, Trash2, Pencil } from 'lucide-svelte';
 
 	let episode = $state<Episode | null>(null);
 	let error = $state('');
@@ -20,6 +20,7 @@
 	let sections = $state<Section[] | null>(null);
 	let loadingText = $state(false);
 	let audioEl = $state<HTMLAudioElement | null>(null);
+	let feedTitle = $state('');
 
 	let useHours = $derived(
 		(episode?.duration_secs ?? 0) >= 3600 ||
@@ -34,7 +35,6 @@
 			transcript = data.transcript ?? null;
 			sections = data.sections ?? [];
 		} catch {
-			// silently ignore — ToC is optional
 			sections = [];
 		}
 	}
@@ -58,6 +58,15 @@
 	}
 
 	onMount(async () => {
+		// Load feed title for breadcrumbs
+		try {
+			const { getFeed } = await import('$lib/api');
+			const feed = await getFeed(token);
+			feedTitle = feed.title;
+		} catch {
+			feedTitle = 'Feed';
+		}
+
 		await loadEpisode();
 		if (episode?.status === 'done') {
 			loadSections();
@@ -147,160 +156,149 @@
 	}
 
 	function badgeClass(status: string): string {
-		if (status === 'done') return 'badge done';
-		if (status === 'error') return 'badge error';
-		if (status === 'pending') return 'badge pending';
-		return 'badge processing';
+		if (status === 'done') return 'badge badge-success';
+		if (status === 'error') return 'badge badge-error';
+		if (status === 'pending') return 'badge badge-ghost';
+		return 'badge badge-warning';
 	}
 </script>
 
-<p class="mb-2"><a href="/feeds/{token}" class="flex" style="display: inline-flex; gap: 0.25rem;"><ArrowLeft size={16} /> Back to feed</a></p>
+<!-- Breadcrumbs -->
+<div class="breadcrumbs text-sm mb-4">
+	<ul>
+		<li><a href="/">Home</a></li>
+		<li><a href="/feeds/{token}">{feedTitle || 'Feed'}</a></li>
+		<li>{episode ? episodeTitle(episode) : 'Episode'}</li>
+	</ul>
+</div>
 
 {#if episode}
-	<div class="card">
-		{#if editing}
-			<form onsubmit={(e) => { e.preventDefault(); saveEdit(); }} class="mb-2" style="display: flex; flex-direction: column; gap: 0.5rem;">
-				<label style="display: flex; flex-direction: column; gap: 0.25rem;">
-					<span class="muted" style="font-size: 0.875rem;">Title</span>
-					<input type="text" bind:value={editTitle} required />
-				</label>
-				<label style="display: flex; flex-direction: column; gap: 0.25rem;">
-					<span class="muted" style="font-size: 0.875rem;">Source URL</span>
-					<input type="url" bind:value={editSourceUrl} placeholder="(leave blank to clear)" />
-				</label>
-				<div class="flex" style="gap: 0.5rem;">
-					<button type="submit" class="primary" disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
-					<button type="button" onclick={() => (editing = false)} disabled={saving}>Cancel</button>
+	<div class="card bg-base-100 shadow-sm border border-base-300">
+		<div class="card-body p-4">
+			{#if editing}
+				<form onsubmit={(e) => { e.preventDefault(); saveEdit(); }} class="mb-4">
+					<fieldset class="fieldset">
+						<label class="fieldset-label">Title</label>
+						<input type="text" class="input input-bordered w-full" bind:value={editTitle} required />
+					</fieldset>
+					<fieldset class="fieldset">
+						<label class="fieldset-label">Source URL</label>
+						<input type="url" class="input input-bordered w-full" bind:value={editSourceUrl} placeholder="(leave blank to clear)" />
+					</fieldset>
+					<div class="flex gap-2 mt-2">
+						<button type="submit" class="btn btn-primary btn-sm" disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
+						<button type="button" class="btn btn-ghost btn-sm" onclick={() => (editing = false)} disabled={saving}>Cancel</button>
+					</div>
+				</form>
+			{/if}
+
+			<div class="flex justify-between items-center flex-wrap gap-2 mb-2">
+				<h2 class="text-xl font-semibold">{episodeTitle(episode)}</h2>
+				<span class={badgeClass(episode.status)}>
+					{episode.status}{#if episode.tts_chunks_total > 0 && episode.status !== 'done' && episode.status !== 'error'}&nbsp;· {episode.tts_chunks_done}/{episode.tts_chunks_total}{/if}
+				</span>
+			</div>
+
+			{#if episode.image_url}
+				<div class="mb-4">
+					<img src={episode.image_url} alt="Episode cover" class="max-w-48 rounded-lg" />
 				</div>
-			</form>
-		{/if}
-		<div class="flex-between mb-1">
-			<h2>{episodeTitle(episode)}</h2>
-			<span class={badgeClass(episode.status)}>
-				{episode.status}{#if episode.tts_chunks_total > 0 && episode.status !== 'done' && episode.status !== 'error'}&nbsp;· {episode.tts_chunks_done}/{episode.tts_chunks_total}{/if}
-			</span>
-		</div>
+			{/if}
 
-		{#if episode.image_url}
-			<div class="mb-2">
-				<img src={episode.image_url} alt="Episode cover" style="max-width: 200px; border-radius: 8px;" />
+			<div class="overflow-x-auto">
+				<table class="table table-sm">
+					<tbody>
+						<tr><td class="opacity-60 w-32">Source</td><td>
+							{#if episode.source_url}
+								<a href={episode.source_url} target="_blank" rel="noopener" class="link">{episode.source_url}</a>
+							{:else}
+								PDF upload
+							{/if}
+						</td></tr>
+						<tr><td class="opacity-60">Type</td><td>{episode.source_type}</td></tr>
+						<tr><td class="opacity-60">Summarized</td><td>{episode.summarize ? 'yes' : 'no'}</td></tr>
+						<tr><td class="opacity-60">TTS Provider</td><td>{episode.tts_provider ?? '\u2014'}</td></tr>
+						<tr><td class="opacity-60">Duration</td><td>{formatDuration(episode.duration_secs)}</td></tr>
+						<tr><td class="opacity-60">Published</td><td>{episode.pub_date ? new Date(episode.pub_date + 'Z').toLocaleString() : '\u2014'}</td></tr>
+						<tr><td class="opacity-60">Created</td><td>{new Date(episode.created_at + 'Z').toLocaleString()}</td></tr>
+					</tbody>
+				</table>
 			</div>
-		{/if}
 
-		<table style="width: 100%; font-size: 0.875rem;"><tbody>
-			<tr>
-				<td class="muted" style="padding: 0.25rem 1rem 0.25rem 0; white-space: nowrap;">Source</td>
-				<td>
-					{#if episode.source_url}
-						<a href={episode.source_url} target="_blank" rel="noopener">{episode.source_url}</a>
-					{:else}
-						PDF upload
-					{/if}
-				</td>
-			</tr>
-			<tr>
-				<td class="muted" style="padding: 0.25rem 1rem 0.25rem 0;">Type</td>
-				<td>{episode.source_type}</td>
-			</tr>
-			<tr>
-				<td class="muted" style="padding: 0.25rem 1rem 0.25rem 0;">Summarized</td>
-				<td>{episode.summarize ? 'yes' : 'no'}</td>
-			</tr>
-			<tr>
-				<td class="muted" style="padding: 0.25rem 1rem 0.25rem 0;">TTS Provider</td>
-				<td>{episode.tts_provider ?? '—'}</td>
-			</tr>
-			<tr>
-				<td class="muted" style="padding: 0.25rem 1rem 0.25rem 0;">Duration</td>
-				<td>{formatDuration(episode.duration_secs)}</td>
-			</tr>
-			<tr>
-				<td class="muted" style="padding: 0.25rem 1rem 0.25rem 0;">Published</td>
-				<td>{episode.pub_date ? new Date(episode.pub_date + 'Z').toLocaleString() : '—'}</td>
-			</tr>
-			<tr>
-				<td class="muted" style="padding: 0.25rem 1rem 0.25rem 0;">Created</td>
-				<td>{new Date(episode.created_at + 'Z').toLocaleString()}</td>
-			</tr>
-		</tbody></table>
+			{#if episode.retry_at}
+				<div role="alert" class="alert alert-warning mt-4">
+					<Clock size={16} />
+					<span>Waiting on retry at {new Date(episode.retry_at + 'Z').toLocaleString()} (upstream service unavailable).</span>
+				</div>
+			{/if}
 
-		{#if episode.retry_at}
-			<div class="mt-2 flex" style="background: #fef3c7; padding: 0.75rem; border-radius: 6px; font-size: 0.875rem;">
-				<Clock size={16} />
-				Waiting on retry at {new Date(episode.retry_at + 'Z').toLocaleString()}
-				(upstream service unavailable).
-			</div>
-		{/if}
+			{#if episode.status === 'error' && episode.error_msg}
+				<div role="alert" class="alert alert-error mt-4">
+					<AlertCircle size={16} />
+					<span><strong>Error:</strong> {episode.error_msg}</span>
+				</div>
+				<div class="mt-3">
+					<button class="btn btn-primary btn-sm" onclick={handleRetry} disabled={retrying}>
+						<RotateCcw size={14} />
+						{retrying ? 'Retrying...' : 'Retry'}
+					</button>
+				</div>
+			{/if}
 
-		{#if episode.status === 'error' && episode.error_msg}
-			<div class="mt-2 flex" style="color: var(--danger); background: #fee2e2; padding: 0.75rem; border-radius: 6px;">
-				<AlertCircle size={16} />
-				<strong>Error:</strong> {episode.error_msg}
-			</div>
-			<div class="mt-2">
-				<button class="primary flex" style="display: inline-flex;" onclick={handleRetry} disabled={retrying}>
-					<RotateCcw size={14} />
-					{retrying ? 'Retrying...' : 'Retry'}
+			{#if episode.status === 'done' && episode.audio_url}
+				<div class="mt-4">
+					<audio bind:this={audioEl} controls src={episode.audio_url} class="w-full" preload="metadata"></audio>
+				</div>
+			{/if}
+
+			{#if episode.description}
+				<p class="mt-4 whitespace-pre-wrap">{episode.description}</p>
+			{/if}
+
+			{#if sections && sections.length > 0}
+				<div class="mt-4">
+					<h3 class="font-semibold mb-2">Chapters</h3>
+					<ul class="menu menu-sm bg-base-200 rounded-lg w-full">
+						{#each sections as section}
+							<li>
+								<button type="button" onclick={() => seekTo(section.start_secs)}>
+									<span class="tabular-nums opacity-60 w-16 text-right shrink-0">{formatTimestamp(section.start_secs, useHours)}</span>
+									<span>{section.title}</span>
+								</button>
+							</li>
+						{/each}
+					</ul>
+				</div>
+			{/if}
+
+			<div class="flex flex-wrap items-center gap-2 mt-4">
+				<button class="btn btn-ghost btn-sm" onclick={() => openText('cleaned')} disabled={loadingText}>
+					<ScrollText size={14} />
+					{episode.summarize ? 'Full text' : 'Transcript'}
+				</button>
+				{#if episode.summarize}
+					<button class="btn btn-ghost btn-sm" onclick={() => openText('transcript')} disabled={loadingText}>
+						<FileText size={14} /> Transcript
+					</button>
+				{/if}
+				{#if loadingText}
+					<span class="loading loading-spinner loading-xs"></span>
+				{/if}
+				<button class="btn btn-ghost btn-sm" onclick={startEdit} disabled={editing}>
+					<Pencil size={14} /> Edit
+				</button>
+				<div class="flex-1"></div>
+				<button class="btn btn-error btn-sm" onclick={handleDelete} disabled={deleting}>
+					<Trash2 size={14} />
+					{deleting ? 'Deleting...' : 'Delete episode'}
 				</button>
 			</div>
-		{/if}
-
-		{#if episode.status === 'done' && episode.audio_url}
-			<div class="mt-2">
-				<audio bind:this={audioEl} controls src={episode.audio_url} style="width: 100%;" preload="metadata"></audio>
-			</div>
-		{/if}
-
-		{#if episode.description}
-			<p class="mt-2" style="white-space: pre-wrap;">{episode.description}</p>
-		{/if}
-
-		{#if sections && sections.length > 0}
-			<div class="mt-2">
-				<h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Chapters</h3>
-				<ul style="list-style: none; padding: 0; margin: 0;">
-					{#each sections as section}
-						<li style="padding: 0.125rem 0;">
-							<button
-								type="button"
-								onclick={() => seekTo(section.start_secs)}
-								style="background: none; border: none; padding: 0; color: var(--link, #2563eb); cursor: pointer; font: inherit; text-align: left;"
-							>
-								<span style="font-variant-numeric: tabular-nums; color: var(--muted, #6b7280); margin-right: 0.5rem;">{formatTimestamp(section.start_secs, useHours)}</span>
-								<span>{section.title}</span>
-							</button>
-						</li>
-					{/each}
-				</ul>
-			</div>
-		{/if}
-
-		<div class="mt-2 flex" style="gap: 0.5rem; flex-wrap: wrap;">
-			<button class="flex" style="display: inline-flex;" onclick={() => openText('cleaned')} disabled={loadingText}>
-				<ScrollText size={14} />
-				{episode.summarize ? 'Full text' : 'Transcript'}
-			</button>
-			{#if episode.summarize}
-				<button class="flex" style="display: inline-flex;" onclick={() => openText('transcript')} disabled={loadingText}>
-					<FileText size={14} /> Transcript
-				</button>
-			{/if}
-			{#if loadingText}
-				<span class="muted">Loading...</span>
-			{/if}
-			<button class="flex" style="display: inline-flex;" onclick={startEdit} disabled={editing}>
-				<Pencil size={14} /> Edit
-			</button>
-			<button class="danger flex" style="display: inline-flex; margin-left: auto;" onclick={handleDelete} disabled={deleting}>
-				<Trash2 size={14} />
-				{deleting ? 'Deleting...' : 'Delete episode'}
-			</button>
 		</div>
 	</div>
 {:else if error}
-	<div class="card" style="border-color: var(--danger); color: var(--danger);">{error}</div>
+	<div role="alert" class="alert alert-error">{error}</div>
 {:else}
-	<p class="muted">Loading...</p>
+	<p class="opacity-60">Loading...</p>
 {/if}
 
 {#if showText === 'cleaned' && cleanedText}

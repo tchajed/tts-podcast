@@ -115,17 +115,21 @@
 
 <div>
 	{#if !loaded}
-		<div class="card">
-			<label class="mb-1" style="display:block; font-weight:500;" for="admin-token">Admin Token</label>
-			<div class="flex">
-				<input id="admin-token" type="password" bind:value={adminToken} placeholder="Enter admin token" />
-				<button class="primary" onclick={loadFeeds}>Load Feeds</button>
+		<div class="card bg-base-100 shadow-sm border border-base-300">
+			<div class="card-body">
+				<label class="label" for="admin-token">Admin Token</label>
+				<div class="flex gap-2">
+					<input id="admin-token" type="password" class="input input-bordered flex-1" bind:value={adminToken} placeholder="Enter admin token" />
+					<button class="btn btn-primary" onclick={loadFeeds}>Load Feeds</button>
+				</div>
 			</div>
 		</div>
 	{:else}
-		<div class="flex-between mb-2">
-			<h2>Feeds</h2>
-			<button class="primary flex" style="display: inline-flex;" onclick={() => showCreate = !showCreate}>
+		<p class="opacity-60 text-sm mb-4">Convert articles, papers, and other written content to audio using text-to-speech.</p>
+
+		<div class="flex justify-between items-center mb-4">
+			<h2 class="text-xl font-semibold">Feeds</h2>
+			<button class="btn btn-primary btn-sm" onclick={() => showCreate = !showCreate}>
 				{#if showCreate}
 					<X size={16} /> Cancel
 				{:else}
@@ -135,96 +139,96 @@
 		</div>
 
 		{#if showCreate}
-			<div class="card mb-2">
-				<form onsubmit={(e) => { e.preventDefault(); handleCreate(); }}>
-					<div class="mb-1">
-						<label>Slug
-						<input bind:value={newSlug} placeholder="ml-papers" required />
-						</label>
-					</div>
-					<div class="mb-1">
-						<label>Title
-						<input bind:value={newTitle} placeholder="ML Papers" required />
-						</label>
-					</div>
-					<div class="mb-1">
-						<label>Description
-						<input bind:value={newDescription} placeholder="Optional description" />
-						</label>
-					</div>
-					<button type="submit" class="primary">Create Feed</button>
-				</form>
+			<div class="card bg-base-100 shadow-sm border border-base-300 mb-4">
+				<div class="card-body">
+					<form onsubmit={(e) => { e.preventDefault(); handleCreate(); }}>
+						<fieldset class="fieldset">
+							<label class="fieldset-label">Slug</label>
+							<input class="input input-bordered w-full" bind:value={newSlug} placeholder="ml-papers" required />
+						</fieldset>
+						<fieldset class="fieldset">
+							<label class="fieldset-label">Title</label>
+							<input class="input input-bordered w-full" bind:value={newTitle} placeholder="ML Papers" required />
+						</fieldset>
+						<fieldset class="fieldset">
+							<label class="fieldset-label">Description</label>
+							<input class="input input-bordered w-full" bind:value={newDescription} placeholder="Optional description" />
+						</fieldset>
+						<div class="mt-2">
+							<button type="submit" class="btn btn-primary btn-sm">Create Feed</button>
+						</div>
+					</form>
+				</div>
 			</div>
 		{/if}
 
 		{#if error}
-			<div class="card" style="border-color: var(--danger); color: var(--danger);">{error}</div>
+			<div role="alert" class="alert alert-error mb-4">{error}</div>
 		{/if}
 
 		{#each feeds as feed}
-			<div class="card">
-				{#if editingToken === feed.feed_token}
-					<form onsubmit={(e) => { e.preventDefault(); handleEditSave(); }}>
-						<div class="mb-1">
-							<label>Slug
-							<input bind:value={editSlug} required />
-							</label>
-						</div>
-						<div class="mb-1">
-							<label>Title
-							<input bind:value={editTitle} required />
-							</label>
-						</div>
-						<div class="mb-1">
-							<label>Description
-							<input bind:value={editDescription} />
-							</label>
-						</div>
-						<div class="flex">
-							<button type="submit" class="primary flex" style="display: inline-flex;"><Save size={14} /> Save</button>
-							<button type="button" class="flex" style="display: inline-flex;" onclick={() => (editingToken = null)}><X size={14} /> Cancel</button>
-						</div>
-					</form>
-				{:else}
-					<div class="flex-between">
-						<div class="flex" style="align-items: center;">
-							{#if feed.image_url}
-								<img src={feed.image_url} alt="" width="48" height="48" style="border-radius: 4px;" />
-							{/if}
-							<div>
-								<a href="/feeds/{feed.feed_token}"><strong>{feed.title}</strong></a>
-								<span class="muted">({feed.slug})</span>
+			<div class="card bg-base-100 shadow-sm border border-base-300 mb-3">
+				<div class="card-body p-4">
+					{#if editingToken === feed.feed_token}
+						<form onsubmit={(e) => { e.preventDefault(); handleEditSave(); }}>
+							<fieldset class="fieldset">
+								<label class="fieldset-label">Slug</label>
+								<input class="input input-bordered w-full" bind:value={editSlug} required />
+							</fieldset>
+							<fieldset class="fieldset">
+								<label class="fieldset-label">Title</label>
+								<input class="input input-bordered w-full" bind:value={editTitle} required />
+							</fieldset>
+							<fieldset class="fieldset">
+								<label class="fieldset-label">Description</label>
+								<input class="input input-bordered w-full" bind:value={editDescription} />
+							</fieldset>
+							<div class="flex gap-2 mt-2">
+								<button type="submit" class="btn btn-primary btn-sm"><Save size={14} /> Save</button>
+								<button type="button" class="btn btn-ghost btn-sm" onclick={() => (editingToken = null)}><X size={14} /> Cancel</button>
+							</div>
+						</form>
+					{:else}
+						<div class="flex justify-between items-center flex-wrap gap-2">
+							<div class="flex items-center gap-3">
+								{#if feed.image_url}
+									<img src={feed.image_url} alt="" width="48" height="48" class="rounded" />
+								{/if}
+								<div>
+									<a href="/feeds/{feed.feed_token}" class="font-semibold link">{feed.title}</a>
+									<span class="text-sm opacity-60">({feed.slug})</span>
+								</div>
+							</div>
+							<div class="flex gap-1 flex-wrap">
+								<button class="btn btn-ghost btn-xs" onclick={() => startEdit(feed)}><Pencil size={14} /> Edit</button>
+								<button
+									class="btn btn-ghost btn-xs"
+									onclick={() => feed.feed_token && handleRegenerateImage(feed.feed_token)}
+									disabled={regenerating === feed.feed_token}
+								>
+									<ImagePlus size={14} />
+									{regenerating === feed.feed_token ? 'Generating...' : feed.image_url ? 'Regen image' : 'Gen image'}
+								</button>
+								<button class="btn btn-error btn-xs" onclick={() => feed.feed_token && handleDelete(feed.feed_token)}><Trash2 size={14} /> Delete</button>
 							</div>
 						</div>
-						<div class="flex">
-							<button class="flex" style="display: inline-flex;" onclick={() => startEdit(feed)}><Pencil size={14} /> Edit</button>
-							<button
-								class="flex" style="display: inline-flex;"
-								onclick={() => feed.feed_token && handleRegenerateImage(feed.feed_token)}
-								disabled={regenerating === feed.feed_token}
-							>
-								<ImagePlus size={14} />
-								{regenerating === feed.feed_token ? 'Generating…' : feed.image_url ? 'Regen image' : 'Gen image'}
-							</button>
-							<button class="danger flex" style="display: inline-flex;" onclick={() => feed.feed_token && handleDelete(feed.feed_token)}><Trash2 size={14} /> Delete</button>
-						</div>
-					</div>
-					{#if feed.description}
-						<p class="muted">{feed.description}</p>
-					{/if}
-					<div class="flex mt-2 muted" style="font-size: 0.8rem;">
-						<span>{feed.episode_count ?? 0} episodes</span>
-						{#if feed.rss_url}
-							<span>&middot;</span>
-							<button class="copy-btn flex" style="display: inline-flex;" onclick={() => feed.rss_url && copyToClipboard(feed.rss_url)}>
-								<Rss size={12} /> Copy RSS URL
-							</button>
+						{#if feed.description}
+							<p class="text-sm opacity-60 mt-1">{feed.description}</p>
 						{/if}
-					</div>
-				{/if}
+						<div class="flex items-center gap-2 mt-2 text-xs opacity-60">
+							<span>{feed.episode_count ?? 0} episodes</span>
+							{#if feed.rss_url}
+								<span>&middot;</span>
+								<button class="btn btn-ghost btn-xs" onclick={() => feed.rss_url && copyToClipboard(feed.rss_url)}>
+									<Rss size={12} /> Copy RSS URL
+								</button>
+							{/if}
+						</div>
+					{/if}
+				</div>
 			</div>
 		{:else}
-			<p class="muted">No feeds yet. Create one to get started.</p>
+			<p class="opacity-60">No feeds yet. Create one to get started.</p>
 		{/each}
 	{/if}
 </div>
