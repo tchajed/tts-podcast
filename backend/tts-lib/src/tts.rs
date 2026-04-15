@@ -226,7 +226,12 @@ fn parse_sections(text: &str) -> Vec<SectionText> {
             .map(|n| start + n + 1)
             .unwrap_or(text.len());
         let end = headers.get(i + 1).map(|(s, _)| *s).unwrap_or(text.len());
-        let body = text[after_header..end].trim().to_string();
+        let rest = text[after_header..end].trim();
+        let body = if rest.is_empty() {
+            title.clone()
+        } else {
+            format!("{title}\n\n{rest}")
+        };
         sections.push(SectionText {
             title: Some(title.clone()),
             body,
@@ -422,9 +427,9 @@ mod tests {
         let r = parse_sections(text);
         assert_eq!(r.len(), 2);
         assert_eq!(r[0].title.as_deref(), Some("Abstract"));
-        assert_eq!(r[0].body, "Abstract body.");
+        assert_eq!(r[0].body, "Abstract\n\nAbstract body.");
         assert_eq!(r[1].title.as_deref(), Some("Introduction"));
-        assert_eq!(r[1].body, "Intro body.");
+        assert_eq!(r[1].body, "Introduction\n\nIntro body.");
     }
 
     #[test]
@@ -434,6 +439,7 @@ mod tests {
         assert_eq!(r.len(), 2);
         assert_eq!(r[0].title, None);
         assert_eq!(r[0].body, "Preamble.");
+        assert_eq!(r[1].body, "Section One\n\nBody.");
         assert_eq!(r[1].title.as_deref(), Some("Section One"));
     }
 
@@ -443,6 +449,7 @@ mod tests {
         let r = parse_sections(text);
         assert_eq!(r.len(), 1);
         assert_eq!(r[0].title.as_deref(), Some("Main"));
+        assert!(r[0].body.starts_with("Main\n\n"));
         assert!(r[0].body.contains("### Sub"));
     }
 
