@@ -48,6 +48,21 @@ Rules:
   section structure, omit headers entirely.
 - Output only the cleaned text, nothing else."#;
 
+fn is_math_heavy(text: &str) -> bool {
+    let words = text.split_whitespace().count().max(1);
+    let backslash_cmds = text.matches('\\').count();
+    let math_symbols = text
+        .chars()
+        .filter(|c| {
+            matches!(*c,
+                '∑' | '∫' | '∂' | '∇' | '∞' | '≤' | '≥' | '≠' | '≈' | '→' | '⇒' | '⊆' | '⊇' | '∈' | '∉' | '∀' | '∃' | '⋅' | '×' | '±'
+            ) || matches!(*c as u32, 0x0391..=0x03C9)
+        })
+        .count();
+    let density = (backslash_cmds + math_symbols) as f64 / words as f64 * 1000.0;
+    density > 15.0
+}
+
 /// Clean raw text for TTS. Dispatches to the configured provider.
 pub async fn clean(doc: &Document, provider: &Provider) -> Result<(Document, Usage)> {
     let raw_text = doc
@@ -67,9 +82,10 @@ pub async fn clean(doc: &Document, provider: &Provider) -> Result<(Document, Usa
         }
     };
 
-    // For Claude, use Opus for academic content, Sonnet for articles.
+    // Sonnet handles most cleaning; fall back to Opus for math-heavy papers
+    // where equation paraphrasing benefits from stronger judgment.
     let claude_model = match doc.source_type.as_str() {
-        "arxiv" | "pdf" => "claude-opus-4-6",
+        "arxiv" | "pdf" if is_math_heavy(raw_text) => "claude-opus-4-6",
         _ => "claude-sonnet-4-6",
     };
 
