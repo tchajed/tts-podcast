@@ -308,7 +308,13 @@ fn ensure_blank_line(out: &mut String) {
 }
 
 pub fn extract_arxiv_id(url: &str) -> Option<String> {
-    let patterns = ["arxiv.org/abs/", "ar5iv.org/abs/"];
+    let patterns = [
+        "arxiv.org/abs/",
+        "arxiv.org/html/",
+        "arxiv.org/pdf/",
+        "ar5iv.org/abs/",
+        "ar5iv.org/html/",
+    ];
     for pat in patterns {
         if let Some(idx) = url.find(pat) {
             let rest = &url[idx + pat.len()..];
@@ -316,6 +322,7 @@ pub fn extract_arxiv_id(url: &str) -> Option<String> {
                 .chars()
                 .take_while(|c| *c != '/' && *c != '?')
                 .collect();
+            let id = id.strip_suffix(".pdf").unwrap_or(&id).to_string();
             if !id.is_empty() {
                 return Some(id);
             }

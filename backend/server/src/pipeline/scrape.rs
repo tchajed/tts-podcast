@@ -54,6 +54,12 @@ pub async fn run(
             tokio::fs::write(&pdf_path, &bytes)
                 .await
                 .context("Failed to write downloaded PDF")?;
+            // Upgrade source_type so the clean stage uses the academic prompt
+            // (with section header extraction) instead of the article prompt.
+            sqlx::query("UPDATE episodes SET source_type = 'pdf' WHERE id = $1")
+                .bind(episode_id)
+                .execute(pool)
+                .await?;
             crate::pipeline::pdf::run(episode_id, pool, config).await
         }
     }

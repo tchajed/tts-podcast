@@ -14,6 +14,15 @@ Rules:
 - Do not add commentary.
 - Output only the cleaned article text, nothing else."#;
 
+const ARTICLE_HEADER_RULE: &str = r#"
+- This is a long article. Mark each major section with a markdown header line
+  of the form `## Section Title` on its own line, blank line before and after.
+  Use the article's own section names when present. Do not add subsection
+  headers (no `###`). If the article has no clear section structure, omit
+  headers entirely."#;
+
+const LONG_ARTICLE_WORD_THRESHOLD: usize = 5000;
+
 const ACADEMIC_SYSTEM_PROMPT: &str = r#"You are preparing an academic paper for text-to-speech conversion.
 Transform the provided text so it reads naturally when spoken aloud.
 
@@ -46,9 +55,16 @@ pub async fn clean(doc: &Document, provider: &Provider) -> Result<(Document, Usa
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("No raw_text available for cleaning"))?;
 
-    let system_prompt = match doc.source_type.as_str() {
-        "arxiv" | "pdf" => ACADEMIC_SYSTEM_PROMPT,
-        _ => ARTICLE_SYSTEM_PROMPT,
+    let system_prompt: std::borrow::Cow<'static, str> = match doc.source_type.as_str() {
+        "arxiv" | "pdf" => ACADEMIC_SYSTEM_PROMPT.into(),
+        _ => {
+            let word_count = raw_text.split_whitespace().count();
+            if word_count > LONG_ARTICLE_WORD_THRESHOLD {
+                format!("{ARTICLE_SYSTEM_PROMPT}{ARTICLE_HEADER_RULE}").into()
+            } else {
+                ARTICLE_SYSTEM_PROMPT.into()
+            }
+        }
     };
 
     // For Claude, use Opus for academic content, Sonnet for articles.
@@ -61,7 +77,7 @@ pub async fn clean(doc: &Document, provider: &Provider) -> Result<(Document, Usa
     // 32k comfortably fits a full conference-paper body without truncation.
     let client = reqwest::Client::new();
     let result = provider
-        .chat(&client, claude_model, Some(system_prompt), raw_text, 32768)
+        .chat(&client, claude_model, Some(&system_prompt), raw_text, 32768)
         .await?;
     let cleaned_text = result.text;
 

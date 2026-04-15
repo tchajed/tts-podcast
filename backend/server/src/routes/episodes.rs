@@ -78,8 +78,14 @@ pub struct EpisodeResponse {
 }
 
 fn detect_source_type(url: &str) -> &'static str {
-    if url.contains("arxiv.org/abs/") || url.contains("ar5iv.org") {
+    if url.contains("arxiv.org/abs/")
+        || url.contains("arxiv.org/html/")
+        || url.contains("arxiv.org/pdf/")
+        || url.contains("ar5iv.org")
+    {
         "arxiv"
+    } else if tts_lib::scrape::url_looks_like_pdf(url) {
+        "pdf"
     } else {
         "article"
     }
