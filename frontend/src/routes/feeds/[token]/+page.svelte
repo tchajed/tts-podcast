@@ -26,6 +26,7 @@
 
 	// TTS options
 	let summarize = $state(false);
+	let summarizeFocus = $state('');
 
 	// Toast
 	let toastMessage = $state('');
@@ -73,7 +74,7 @@
 		submitting = true;
 		error = '';
 		try {
-			await submitEpisode(token, submitUrl, { summarize });
+			await submitEpisode(token, submitUrl, { summarize, summarizeFocus: summarizeFocus.trim() || undefined });
 			submitUrl = '';
 			await loadFeed();
 			startPolling();
@@ -92,6 +93,7 @@
 			await uploadPdf(token, pdfFile, pdfTitle || undefined, {
 				summarize,
 				sourceUrl: pdfSourceUrl.trim() || undefined,
+				summarizeFocus: summarizeFocus.trim() || undefined,
 			});
 			pdfFile = null;
 			pdfTitle = '';
@@ -138,7 +140,7 @@
 					<p class="muted mb-1">{feed.description}</p>
 				{/if}
 				<p style="font-size: 0.875rem; margin-bottom: 0.75rem;">
-					This feed converts articles and papers to audio using text-to-speech.
+					This feed converts articles, papers, and other written content to audio using text-to-speech.
 					Copy the RSS URL below and add it as a custom feed in your podcast app
 					(e.g., in Overcast: Library &rarr; <Search size={14} style="display:inline; vertical-align:middle;" /> &rarr; Add URL).
 				</p>
@@ -159,7 +161,7 @@
 				handleSubmitUrl();
 			}
 		}}>
-			<h3 class="form-heading flex" style="gap: 0.375rem;"><Plus size={18} /> Add a paper</h3>
+			<h3 class="form-heading flex" style="gap: 0.375rem;"><Plus size={18} /> Add an episode</h3>
 
 			<div class="mb-1">
 				<div class="input-with-icon">
@@ -177,7 +179,7 @@
 				<label class="file-drop" class:has-file={!!pdfFile}>
 					<input
 						type="file"
-						accept=".pdf"
+						accept=".pdf,.md,.markdown,.txt"
 						onchange={handleFileInput}
 						disabled={submitting || uploadingPdf}
 						class="file-input-hidden"
@@ -192,7 +194,7 @@
 						><X size={14} /></button>
 					{:else}
 						<FileUp size={16} style="color: var(--text-muted);" />
-						<span class="file-drop-text muted">Or choose a PDF file</span>
+						<span class="file-drop-text muted">Or choose a PDF or Markdown file</span>
 					{/if}
 				</label>
 			</div>
@@ -223,6 +225,15 @@
 					{/if}
 				</button>
 			</div>
+			{#if summarize}
+				<div class="mb-1" style="margin-top: 0.5rem;">
+					<input
+						bind:value={summarizeFocus}
+						placeholder="Focus (optional): e.g., focus only on GRPO"
+						disabled={submitting || uploadingPdf}
+					/>
+				</div>
+			{/if}
 			<p class="muted" style="font-size: 0.75rem; margin-top: 0.25rem;">
 				Summarize condenses the text to ~20-30% before converting to speech.
 			</p>

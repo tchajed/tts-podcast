@@ -49,6 +49,10 @@ enum Command {
         /// Provider: claude or gemini
         #[arg(long, default_value = "claude")]
         provider: String,
+
+        /// Optional focus: narrow the summary to this topic / angle.
+        #[arg(long)]
+        focus: Option<String>,
     },
 
     /// Generate a short episode description from cleaned_text or transcript.
@@ -96,6 +100,10 @@ enum Command {
         /// Summarize before TTS
         #[arg(long)]
         summarize: bool,
+
+        /// Optional summarization focus
+        #[arg(long)]
+        focus: Option<String>,
 
         /// Output MP3 file path
         #[arg(short, long, default_value = "output.mp3")]
@@ -190,10 +198,10 @@ async fn main() -> Result<()> {
             print_document(&doc)?;
         }
 
-        Command::Summarize { provider } => {
+        Command::Summarize { provider, focus } => {
             let doc = read_stdin_document()?;
             let provider = make_provider(&provider)?;
-            let doc = tts_lib::summarize::summarize(&doc, &provider).await?;
+            let doc = tts_lib::summarize::summarize(&doc, &provider, focus.as_deref()).await?;
             print_document(&doc)?;
         }
 
@@ -246,6 +254,7 @@ async fn main() -> Result<()> {
             source,
             source_type,
             summarize,
+            focus,
             output,
             voice,
             stop_after,
@@ -293,7 +302,7 @@ async fn main() -> Result<()> {
             // Stage 3: Summarize (optional)
             if summarize {
                 eprintln!("--- Summarize ---");
-                doc = tts_lib::summarize::summarize(&doc, &provider).await?;
+                doc = tts_lib::summarize::summarize(&doc, &provider, focus.as_deref()).await?;
                 eprintln!(
                     "Transcript: {} words",
                     doc.word_count.unwrap_or(0)

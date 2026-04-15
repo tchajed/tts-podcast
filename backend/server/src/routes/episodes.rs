@@ -21,6 +21,10 @@ pub fn router() -> Router<AppState> {
             post(upload_pdf).layer(DefaultBodyLimit::max(50 * 1024 * 1024)),
         )
         .route(
+            "/api/v1/feeds/{feed_token}/episodes/text",
+            post(submit_text).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
+        )
+        .route(
             "/api/v1/feeds/{feed_token}/episodes/{episode_id}",
             get(get_episode).delete(delete_episode),
         )
@@ -40,6 +44,7 @@ pub struct SubmitEpisodeRequest {
     pub tts_provider: Option<String>,
     #[serde(default)]
     pub summarize: bool,
+    pub summarize_focus: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -146,8 +151,8 @@ async fn submit_episode(
     let mut tx = state.pool.begin().await?;
 
     sqlx::query(
-        "INSERT INTO episodes (id, feed_id, title, source_url, source_type, tts_provider, summarize, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')",
+        "INSERT INTO episodes (id, feed_id, title, source_url, source_type, tts_provider, summarize, summarize_focus, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')",
     )
     .bind(&episode_id)
     .bind(&feed_id)
@@ -156,6 +161,7 @@ async fn submit_episode(
     .bind(source_type)
     .bind(&tts_provider)
     .bind(req.summarize as i32)
+    .bind(req.summarize_focus.as_deref().map(str::trim).filter(|s| !s.is_empty()))
     .execute(&mut *tx)
     .await?;
 
@@ -188,10 +194,12 @@ async fn upload_pdf(
     let feed_id = resolve_feed(&state.pool, &feed_token).await?;
 
     let mut pdf_bytes: Option<Vec<u8>> = None;
+    let mut file_name: Option<String> = None;
     let mut title: Option<String> = None;
     let mut tts_provider_field: Option<String> = None;
     let mut source_url: Option<String> = None;
     let mut summarize = false;
+    let mut summarize_focus: Option<String> = None;
 
     while let Some(field) = multipart.next_field().await.map_err(|e| {
         AppError::BadRequest(format!("Failed to read multipart field: {e}"))
@@ -199,6 +207,7 @@ async fn upload_pdf(
         let name = field.name().unwrap_or("").to_string();
         match name.as_str() {
             "file" => {
+                file_name = field.file_name().map(|s| s.to_string());
                 pdf_bytes = Some(
                     field
                         .bytes()
@@ -238,29 +247,92 @@ async fn upload_pdf(
                     source_url = Some(trimmed.to_string());
                 }
             }
+            "summarize_focus" => {
+                let val = field.text().await.unwrap_or_default();
+                let trimmed = val.trim();
+                if !trimmed.is_empty() {
+                    summarize_focus = Some(trimmed.to_string());
+                }
+            }
             _ => {}
         }
     }
 
-    let pdf_bytes = pdf_bytes.ok_or_else(|| AppError::BadRequest("No file field".into()))?;
+    let file_bytes = pdf_bytes.ok_or_else(|| AppError::BadRequest("No file field".into()))?;
     let default = get_tts_default(&state.pool, &feed_id).await?;
     let tts_provider = validate_tts_provider(tts_provider_field.as_ref(), default)?;
-    let title = title.unwrap_or_else(|| "PDF Upload".into());
+
+    let is_markdown = file_name
+        .as_deref()
+        .map(|n| {
+            let lower = n.to_ascii_lowercase();
+            lower.ends_with(".md") || lower.ends_with(".markdown") || lower.ends_with(".txt")
+        })
+        .unwrap_or(false);
 
     let episode_id = new_id();
     let job_id = new_id();
 
+    if is_markdown {
+        let text = String::from_utf8(file_bytes).map_err(|_| {
+            AppError::BadRequest("Markdown upload must be valid UTF-8".into())
+        })?;
+        let title = title.unwrap_or_else(|| {
+            file_name
+                .as_deref()
+                .and_then(|n| n.rsplit('/').next())
+                .map(|n| n.trim_end_matches(".md").trim_end_matches(".markdown").trim_end_matches(".txt").to_string())
+                .unwrap_or_else(|| "Markdown Upload".into())
+        });
+
+        let mut tx = state.pool.begin().await?;
+        sqlx::query(
+            "INSERT INTO episodes (id, feed_id, title, source_url, source_type, raw_text, tts_provider, summarize, summarize_focus, status)
+             VALUES ($1, $2, $3, $4, 'markdown', $5, $6, $7, $8, 'cleaning')",
+        )
+        .bind(&episode_id)
+        .bind(&feed_id)
+        .bind(&title)
+        .bind(&source_url)
+        .bind(&text)
+        .bind(&tts_provider)
+        .bind(summarize as i32)
+        .bind(&summarize_focus)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO jobs (id, episode_id, job_type, status) VALUES ($1, $2, 'clean', 'queued')",
+        )
+        .bind(&job_id)
+        .bind(&episode_id)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+
+        return Ok((
+            StatusCode::ACCEPTED,
+            Json(SubmitEpisodeResponse {
+                id: episode_id,
+                status: "cleaning".into(),
+                source_url,
+                source_type: "markdown".into(),
+            }),
+        ));
+    }
+
+    let title = title.unwrap_or_else(|| "PDF Upload".into());
+
     // Write PDF to temp file for the pdf pipeline stage
     let pdf_path = format!("/data/{}.pdf", episode_id);
-    tokio::fs::write(&pdf_path, &pdf_bytes)
+    tokio::fs::write(&pdf_path, &file_bytes)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to write temp PDF: {e}"))?;
 
     let mut tx = state.pool.begin().await?;
 
     sqlx::query(
-        "INSERT INTO episodes (id, feed_id, title, source_url, source_type, tts_provider, summarize, status)
-         VALUES ($1, $2, $3, $4, 'pdf', $5, $6, 'pending')",
+        "INSERT INTO episodes (id, feed_id, title, source_url, source_type, tts_provider, summarize, summarize_focus, status)
+         VALUES ($1, $2, $3, $4, 'pdf', $5, $6, $7, 'pending')",
     )
     .bind(&episode_id)
     .bind(&feed_id)
@@ -268,6 +340,7 @@ async fn upload_pdf(
     .bind(&source_url)
     .bind(&tts_provider)
     .bind(summarize as i32)
+    .bind(&summarize_focus)
     .execute(&mut *tx)
     .await?;
 
@@ -288,6 +361,77 @@ async fn upload_pdf(
             status: "pending".into(),
             source_url,
             source_type: "pdf".into(),
+        }),
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SubmitTextRequest {
+    pub title: String,
+    pub text: String,
+    pub source_url: Option<String>,
+    pub tts_provider: Option<String>,
+    #[serde(default)]
+    pub summarize: bool,
+    pub summarize_focus: Option<String>,
+}
+
+async fn submit_text(
+    State(state): State<AppState>,
+    Path(feed_token): Path<String>,
+    Json(req): Json<SubmitTextRequest>,
+) -> AppResult<(StatusCode, Json<SubmitEpisodeResponse>)> {
+    let feed_id = resolve_feed(&state.pool, &feed_token).await?;
+    if req.title.trim().is_empty() {
+        return Err(AppError::BadRequest("title is required".into()));
+    }
+    if req.text.trim().is_empty() {
+        return Err(AppError::BadRequest("text is required".into()));
+    }
+    let default = get_tts_default(&state.pool, &feed_id).await?;
+    let tts_provider = validate_tts_provider(req.tts_provider.as_ref(), default)?;
+    let source_url = req.source_url.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(String::from);
+
+    let episode_id = new_id();
+    let job_id = new_id();
+
+    let mut tx = state.pool.begin().await?;
+
+    // Markdown/text goes in as raw_text directly; we skip the scrape stage
+    // and enqueue a clean job to normalize it for TTS.
+    let focus = req.summarize_focus.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(String::from);
+    sqlx::query(
+        "INSERT INTO episodes (id, feed_id, title, source_url, source_type, raw_text, tts_provider, summarize, summarize_focus, status)
+         VALUES ($1, $2, $3, $4, 'markdown', $5, $6, $7, $8, 'cleaning')",
+    )
+    .bind(&episode_id)
+    .bind(&feed_id)
+    .bind(&req.title)
+    .bind(&source_url)
+    .bind(&req.text)
+    .bind(&tts_provider)
+    .bind(req.summarize as i32)
+    .bind(&focus)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO jobs (id, episode_id, job_type, status) VALUES ($1, $2, 'clean', 'queued')",
+    )
+    .bind(&job_id)
+    .bind(&episode_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(SubmitEpisodeResponse {
+            id: episode_id,
+            status: "cleaning".into(),
+            source_url,
+            source_type: "markdown".into(),
         }),
     ))
 }

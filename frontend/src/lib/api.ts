@@ -126,11 +126,15 @@ export async function getFeed(feedToken: string): Promise<FeedWithEpisodes> {
 export async function submitEpisode(
 	feedToken: string,
 	url: string,
-	options?: { summarize?: boolean }
+	options?: { summarize?: boolean; summarizeFocus?: string }
 ): Promise<SubmitEpisodeResponse> {
 	return apiFetch(`/api/v1/feeds/${feedToken}/episodes`, {
 		method: 'POST',
-		body: JSON.stringify({ url, summarize: options?.summarize ?? false }),
+		body: JSON.stringify({
+			url,
+			summarize: options?.summarize ?? false,
+			summarize_focus: options?.summarizeFocus,
+		}),
 	});
 }
 
@@ -138,13 +142,14 @@ export async function uploadPdf(
 	feedToken: string,
 	file: File,
 	title?: string,
-	options?: { summarize?: boolean; sourceUrl?: string }
+	options?: { summarize?: boolean; sourceUrl?: string; summarizeFocus?: string }
 ): Promise<SubmitEpisodeResponse> {
 	const formData = new FormData();
 	formData.append('file', file);
 	if (title) formData.append('title', title);
 	if (options?.summarize) formData.append('summarize', 'true');
 	if (options?.sourceUrl) formData.append('source_url', options.sourceUrl);
+	if (options?.summarizeFocus) formData.append('summarize_focus', options.summarizeFocus);
 
 	return apiFetch(`/api/v1/feeds/${feedToken}/episodes/pdf`, {
 		method: 'POST',

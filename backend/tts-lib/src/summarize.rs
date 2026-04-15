@@ -14,19 +14,31 @@ Rules:
 - Do not use bullet points or numbered lists — write in flowing paragraphs.
 - Output only the summary text, nothing else."#;
 
-/// Summarize cleaned text into a podcast-style transcript.
-pub async fn summarize(doc: &Document, provider: &Provider) -> Result<Document> {
+/// Summarize cleaned text into a podcast-style transcript. An optional `focus`
+/// narrows the summary to a particular topic / angle.
+pub async fn summarize(
+    doc: &Document,
+    provider: &Provider,
+    focus: Option<&str>,
+) -> Result<Document> {
     let cleaned_text = doc
         .cleaned_text
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("No cleaned_text available for summarization"))?;
+
+    let system_prompt = match focus.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(f) => format!(
+            "{SUMMARIZE_SYSTEM_PROMPT}\n\nFocus: {f}\nPrioritize content related to this focus and omit or compress everything else. If the focus is entirely absent from the source, summarize the source normally."
+        ),
+        None => SUMMARIZE_SYSTEM_PROMPT.to_string(),
+    };
 
     let client = reqwest::Client::new();
     let transcript = provider
         .chat(
             &client,
             "claude-sonnet-4-6",
-            Some(SUMMARIZE_SYSTEM_PROMPT),
+            Some(&system_prompt),
             cleaned_text,
             8192,
         )

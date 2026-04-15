@@ -7,8 +7,8 @@ pub async fn run(
     pool: &sqlx::SqlitePool,
     config: &AppConfig,
 ) -> Result<()> {
-    let cleaned_text = sqlx::query_scalar::<_, Option<String>>(
-        "SELECT cleaned_text FROM episodes WHERE id = $1",
+    let (cleaned_text, focus) = sqlx::query_as::<_, (Option<String>, Option<String>)>(
+        "SELECT cleaned_text, summarize_focus FROM episodes WHERE id = $1",
     )
     .bind(episode_id)
     .fetch_one(pool)
@@ -26,7 +26,7 @@ pub async fn run(
     };
 
     let provider = config.make_provider();
-    let doc = tts_lib::summarize::summarize(&input_doc, &provider)
+    let doc = tts_lib::summarize::summarize(&input_doc, &provider, focus.as_deref())
         .await
         .with_context(|| format!("Summarize failed for episode {episode_id}"))?;
 
