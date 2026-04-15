@@ -40,6 +40,8 @@ export interface Episode {
 	created_at: string;
 	summarize: number;
 	retry_at: string | null;
+	tts_chunks_done: number;
+	tts_chunks_total: number;
 }
 
 export interface SubmitEpisodeResponse {
