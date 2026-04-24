@@ -433,8 +433,8 @@ async fn run_costs(
             .json()
             .await?;
         println!(
-            "{:<14} {:<10} {:<28} {:>10} {:>10}  {}",
-            "stage", "provider", "model", "input", "output", "when"
+            "{:<14} {:<10} {:<28} {:>10} {:>10}  when",
+            "stage", "provider", "model", "input", "output"
         );
         for r in &resp.rows {
             println!(

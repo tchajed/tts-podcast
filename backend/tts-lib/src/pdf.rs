@@ -171,7 +171,7 @@ async fn render_pdf(pdf_path: &str, out_dir: &str, dpi: u32) -> Result<Vec<Strin
     let mut entries = tokio::fs::read_dir(out_dir).await?;
     while let Some(entry) = entries.next_entry().await? {
         let path = entry.path();
-        if path.extension().map_or(false, |e| e == "jpg") {
+        if path.extension().is_some_and(|e| e == "jpg") {
             page_files.push(path.to_string_lossy().to_string());
         }
     }

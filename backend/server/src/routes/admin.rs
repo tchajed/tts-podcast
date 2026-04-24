@@ -187,9 +187,9 @@ async fn usage_summary(
         )
     };
 
-    let groups: Vec<UsageGroup> = if days.is_some() {
+    let groups: Vec<UsageGroup> = if let Some(days) = days {
         sqlx::query_as(&sql)
-            .bind(days.unwrap())
+            .bind(days)
             .fetch_all(&state.pool)
             .await?
     } else {

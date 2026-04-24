@@ -567,6 +567,7 @@ async fn clean_chunked(
         chunks.iter().filter(|c| c.is_section_start).count()
     );
 
+    #[allow(clippy::type_complexity)]
     let results: Vec<Result<(usize, String, String, Usage, bool)>> =
         stream::iter(chunks.into_iter().enumerate())
             .map(|(i, chunk)| {

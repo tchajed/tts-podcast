@@ -669,8 +669,7 @@ mod tests {
         let segment = "Define the strategy by doing X across the enterprise";
         let long = format!(
             "Our strategic priorities are: {}",
-            std::iter::repeat(segment)
-                .take(40)
+            std::iter::repeat_n(segment, 40)
                 .collect::<Vec<_>>()
                 .join(", ")
         );
@@ -694,7 +693,7 @@ mod tests {
     fn test_split_sentences_hard_split_no_punctuation() {
         // Run-on with no secondary punctuation at all — falls back to word
         // boundaries. Just needs to terminate and respect the limit.
-        let long: String = std::iter::repeat("word ").take(400).collect();
+        let long: String = "word ".repeat(400);
         assert!(long.len() > MAX_SENTENCE_CHARS);
         let pieces = split_sentences(&long);
         for p in &pieces {
