@@ -470,13 +470,58 @@ fn sub_chunk(text: &str, max_chars: usize) -> Vec<String> {
     chunks
 }
 
+/// Tokens that should not end a sentence even when followed by `. `. Compared
+/// case-insensitively against the alphabetic word immediately before the dot.
+/// Single-letter abbreviations (`U.S.`, `e.g.`, `a.m.`) are handled separately.
+const ABBREVIATIONS: &[&str] = &[
+    "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "rev", "hon", "gen", "etc", "vs", "cf",
+    "approx", "inc", "ltd", "corp", "co",
+];
+
+/// True if `current` ends with `.` after a known abbreviation or a single
+/// letter. Single letters cover `U.S.`, `e.g.`, `i.e.`, `a.m.`, `p.m.`.
+fn is_abbreviation_period(current: &str) -> bool {
+    let body = match current.strip_suffix('.') {
+        Some(b) => b,
+        None => return false,
+    };
+    let mut word: Vec<char> = body
+        .chars()
+        .rev()
+        .take_while(|c| c.is_alphabetic())
+        .collect();
+    word.reverse();
+    if word.is_empty() {
+        return false;
+    }
+    if word.len() == 1 {
+        return true;
+    }
+    let lower: String = word.iter().flat_map(|c| c.to_lowercase()).collect();
+    ABBREVIATIONS.contains(&lower.as_str())
+}
+
 fn split_sentences(text: &str) -> Vec<String> {
     let mut sentences = Vec::new();
     let mut current = String::new();
+    let chars: Vec<char> = text.chars().collect();
 
-    for ch in text.chars() {
+    for (i, &ch) in chars.iter().enumerate() {
         current.push(ch);
         if (ch == '.' || ch == '!' || ch == '?') && current.len() > 1 {
+            if ch == '.' {
+                // Decimal numbers and version strings: "3.5", "v1.2.3".
+                if i > 0
+                    && chars[i - 1].is_ascii_digit()
+                    && chars.get(i + 1).is_some_and(|c| c.is_ascii_digit())
+                {
+                    continue;
+                }
+                // Abbreviations ("Dr.", "etc.") and acronyms ("U.S.", "e.g.").
+                if is_abbreviation_period(&current) {
+                    continue;
+                }
+            }
             sentences.push(current.clone());
             current.clear();
         }
@@ -706,6 +751,33 @@ mod tests {
                 p.len()
             );
         }
+    }
+
+    #[test]
+    fn test_split_sentences_keeps_decimal_numbers_intact() {
+        let result = split_sentences("GPT 3.5 is fast. Version 1.2.3 shipped.");
+        assert_eq!(result, vec!["GPT 3.5 is fast.", " Version 1.2.3 shipped."]);
+    }
+
+    #[test]
+    fn test_split_sentences_keeps_abbreviations_intact() {
+        // "Dr." and "Prof." are titles — the dot must not start a new sentence.
+        // We accept that a trailing "etc." merges with the next sentence: the
+        // alternative (splitting) injects an audible pause mid-sentence in the
+        // common case "..., etc., and then ...", which is worse.
+        let result = split_sentences("Dr. Smith met Prof. Jones. They left.");
+        assert_eq!(result, vec!["Dr. Smith met Prof. Jones.", " They left."]);
+    }
+
+    #[test]
+    fn test_split_sentences_keeps_acronyms_intact() {
+        // Single-letter rule covers U.S., e.g., a.m. — none of the internal
+        // periods should produce a sentence break.
+        let result = split_sentences("The U.S. team met at 9 a.m., e.g. Monday. Done.");
+        assert_eq!(
+            result,
+            vec!["The U.S. team met at 9 a.m., e.g. Monday.", " Done."]
+        );
     }
 
     #[test]
